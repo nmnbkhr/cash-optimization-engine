@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1400, initial-scale=1">
+<title>Godaitec COE — Guided Product Walkthrough</title>
+<meta name="author" content="Godaitec Private Limited">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0e17; --bg2: #0f1923; --bg3: #131d2a;
+  --border: #1a2538; --gold: #d4a853; --teal: #2dd4bf;
+  --red: #ef4444; --green: #22c55e; --cyan: #06b6d4;
+  --white: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+  --mono: 'JetBrains Mono', monospace;
+  --ui: 'Space Grotesk', sans-serif;
+}
+body { background: var(--bg); color: var(--white); font-family: var(--ui); line-height: 1.6; }
+
+/* ── Sticky Header ─────────────────────────────────── */
+.top-bar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,14,23,0.95); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 48px; display: flex; justify-content: space-between; align-items: center;
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #c0392b, #e74c3c);
+  display: flex; align-items: center; justify-content: center;
+  font: bold 12px var(--ui); color: #fff;
+}
+.logo-text { font: 600 18px var(--ui); color: var(--white); }
+.logo-text span { color: var(--gold); }
+.badge { font: 600 10px var(--mono); color: var(--red); letter-spacing: 2px; }
+
+/* ── TOC ───────────────────────────────────────────── */
+.toc {
+  max-width: 1300px; margin: 40px auto; padding: 0 48px;
+}
+.toc h2 { font: 700 28px var(--ui); margin-bottom: 8px; }
+.toc p { font: 400 14px var(--ui); color: var(--muted); margin-bottom: 24px; }
+.toc-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.toc-item {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 18px; cursor: pointer; transition: all .2s; text-decoration: none;
+}
+.toc-item:hover { border-color: var(--gold); background: var(--bg3); }
+.toc-num { font: 700 11px var(--mono); color: var(--gold); }
+.toc-name { font: 500 13px var(--ui); color: var(--white); margin-top: 2px; }
+.toc-group { font: 400 10px var(--mono); color: var(--dim); margin-top: 4px; letter-spacing: 1px; text-transform: uppercase; }
+
+/* ── Section ───────────────────────────────────────── */
+.section {
+  max-width: 1300px; margin: 0 auto; padding: 60px 48px;
+  border-bottom: 1px solid var(--border);
+}
+.section:last-of-type { border-bottom: none; }
+
+.section-header { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 24px; }
+.section-num {
+  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center;
+  font: 700 18px var(--mono); color: var(--gold);
+}
+.section-meta { flex: 1; }
+.section-group { font: 600 10px var(--mono); color: var(--teal); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+.section-title { font: 700 26px var(--ui); line-height: 1.2; }
+.section-role { font: 400 12px var(--ui); color: var(--dim); margin-top: 4px; }
+
+/* ── Screenshot ────────────────────────────────────── */
+.screenshot-wrap {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; margin: 20px 0;
+}
+.screenshot-bar {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 0 4px;
+}
+.screenshot-dot { width: 8px; height: 8px; border-radius: 50%; }
+.screenshot-url {
+  flex: 1; background: var(--bg3); border-radius: 4px; padding: 4px 12px;
+  font: 400 11px var(--mono); color: var(--dim);
+}
+.screenshot-badge {
+  font: 600 9px var(--mono); color: var(--red); letter-spacing: 1px;
+  background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
+  padding: 2px 8px; border-radius: 3px;
+}
+.screenshot img {
+  width: 100%; border-radius: 6px; display: block;
+  border: 1px solid var(--border);
+}
+
+/* ── Script Box ────────────────────────────────────── */
+.script-box {
+  background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--gold);
+  border-radius: 8px; padding: 20px 24px; margin: 20px 0;
+}
+.script-label { font: 700 10px var(--mono); color: var(--gold); letter-spacing: 2px; margin-bottom: 10px; }
+.script-text { font: 400 14px var(--ui); color: var(--white); line-height: 1.7; }
+.script-text strong { color: var(--gold); }
+.script-text em { color: var(--teal); font-style: normal; }
+
+/* ── Action Callouts ──────────────────────────────── */
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.action {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 14px; font: 500 12px var(--ui);
+}
+.action-icon { font-size: 14px; }
+.action-click { border-color: var(--teal); }
+.action-click .action-icon { color: var(--teal); }
+.action-point { border-color: var(--gold); }
+.action-point .action-icon { color: var(--gold); }
+.action-say { border-color: var(--cyan); }
+.action-say .action-icon { color: var(--cyan); }
+
+/* ── Key Points ───────────────────────────────────── */
+.key-points { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.key-point {
+  background: var(--bg3); border-radius: 6px; padding: 14px 16px;
+  border-left: 2px solid var(--teal);
+}
+.key-point-label { font: 600 10px var(--mono); color: var(--teal); letter-spacing: 1px; margin-bottom: 4px; }
+.key-point-text { font: 400 12px var(--ui); color: var(--muted); line-height: 1.5; }
+
+/* ── Footer ───────────────────────────────────────── */
+.doc-footer {
+  max-width: 1300px; margin: 0 auto; padding: 40px 48px 60px;
+  text-align: center;
+}
+.doc-footer .logo { display: inline-flex; margin-bottom: 12px; }
+.doc-footer p { font: 400 12px var(--ui); color: var(--dim); }
+.doc-footer a { color: var(--gold); text-decoration: none; }
+
+/* ── Print ────────────────────────────────────────── */
+@media print {
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .top-bar { position: static; }
+  .section { page-break-inside: avoid; }
+}
+
+/* ── Copy protection ──────────────────────────────── */
+.watermark {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg);
+  font: bold 120px var(--ui); color: rgba(212,168,83,0.02);
+  pointer-events: none; white-space: nowrap; z-index: 0;
+  letter-spacing: 30px;
+}
+</style>
+</head>
+<body>
+
+<div class="watermark">CONFIDENTIAL</div>
+
+<div class="top-bar">
+  <div class="logo">
+    <div class="logo-icon">&#20116;&#22823;</div>
+    <div class="logo-text">godai<span>tec</span></div>
+    <span style="font:500 14px var(--ui);color:var(--muted);margin-left:8px">Cash Optimization Engine &mdash; Guided Walkthrough</span>
+  </div>
+  <div class="badge">CONFIDENTIAL &middot; SYNTHETIC DATA</div>
+</div>
+
+<!-- ═══════════════ TABLE OF CONTENTS ═══════════════ -->
+<div class="toc">
+  <h2>Product Walkthrough Script</h2>
+  <p>Page-by-page guided demo of all 32 screens. Each section includes the real app screenshot, a presenter script, guided actions to demonstrate, and key talking points. All data shown is synthetic, modeled at Tier-1 scale (1,500+ branches, 2,180 ATMs).</p>
+
+  <div class="toc-grid">
+    <a class="toc-item" href="#s01"><div class="toc-num">01</div><div class="toc-name">Executive Strategy Summary</div><div class="toc-group">Planning</div></a>
+    <a class="toc-item" href="#s02"><div class="toc-num">02</div><div class="toc-name">Use Case Catalog</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s03"><div class="toc-num">03</div><div class="toc-name">Command Center</div><div class="toc-group">Daily Operations</div></a>
+    <a class="toc-item" href="#s04"><div class="toc-num">04</div><div class="toc-name">Alerts &amp; Exceptions</div><div class="toc-group">Daily Operations</div></a>
+    <a class="toc-item" href="#s05"><div class="toc-num">05</div><div class="toc-name">Branch Action Plan</div><div class="toc-group">Daily Operations</div></a>
+    <a class="toc-item" href="#s06"><div class="toc-num">06</div><div class="toc-name">CIT &amp; Fleet</div><div class="toc-group">Daily Operations</div></a>
+    <a class="toc-item" href="#s07"><div class="toc-num">07</div><div class="toc-name">Forecast Dashboard</div><div class="toc-group">Daily Operations</div></a>
+    <a class="toc-item" href="#s08"><div class="toc-num">08</div><div class="toc-name">Consolidated Dashboard</div><div class="toc-group">Monitoring</div></a>
+    <a class="toc-item" href="#s09"><div class="toc-num">09</div><div class="toc-name">Regional View</div><div class="toc-group">Monitoring</div></a>
+    <a class="toc-item" href="#s10"><div class="toc-num">10</div><div class="toc-name">Cash Pulse</div><div class="toc-group">Monitoring</div></a>
+    <a class="toc-item" href="#s11"><div class="toc-num">11</div><div class="toc-name">Vault Heatmap</div><div class="toc-group">Monitoring</div></a>
+    <a class="toc-item" href="#s12"><div class="toc-num">12</div><div class="toc-name">Branch Network Map</div><div class="toc-group">Monitoring</div></a>
+    <a class="toc-item" href="#s13"><div class="toc-num">13</div><div class="toc-name">Treasury Desk</div><div class="toc-group">Treasury</div></a>
+    <a class="toc-item" href="#s14"><div class="toc-num">14</div><div class="toc-name">IEC Swap Hub</div><div class="toc-group">Treasury</div></a>
+    <a class="toc-item" href="#s15"><div class="toc-num">15</div><div class="toc-name">SBP Rates</div><div class="toc-group">Treasury</div></a>
+    <a class="toc-item" href="#s16"><div class="toc-num">16</div><div class="toc-name">What-If Simulator</div><div class="toc-group">Planning</div></a>
+    <a class="toc-item" href="#s17"><div class="toc-num">17</div><div class="toc-name">Seasonal Prep</div><div class="toc-group">Planning</div></a>
+    <a class="toc-item" href="#s18"><div class="toc-num">18</div><div class="toc-name">Digital Shift Report</div><div class="toc-group">Planning</div></a>
+    <a class="toc-item" href="#s19"><div class="toc-num">19</div><div class="toc-name">CDM Deployment</div><div class="toc-group">Planning</div></a>
+    <a class="toc-item" href="#s20"><div class="toc-num">20</div><div class="toc-name">P&amp;L Waterfall</div><div class="toc-group">Planning</div></a>
+    <a class="toc-item" href="#s21"><div class="toc-num">21</div><div class="toc-name">Compliance Monitor</div><div class="toc-group">Compliance</div></a>
+    <a class="toc-item" href="#s22"><div class="toc-num">22</div><div class="toc-name">Data Reconciliation</div><div class="toc-group">Compliance</div></a>
+    <a class="toc-item" href="#s23"><div class="toc-num">23</div><div class="toc-name">UC-01 Vault Forecast</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s24"><div class="toc-num">24</div><div class="toc-name">UC-02 ATM Replenishment</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s25"><div class="toc-num">25</div><div class="toc-name">UC-03 Netting</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s26"><div class="toc-num">26</div><div class="toc-name">UC-04 CRR Float</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s27"><div class="toc-num">27</div><div class="toc-name">UC-05 Nostro</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s28"><div class="toc-num">28</div><div class="toc-name">UC-06 Vostro</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s29"><div class="toc-num">29</div><div class="toc-name">UC-07 Denomination</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s30"><div class="toc-num">30</div><div class="toc-name">UC-08 CIT Routing</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s31"><div class="toc-num">31</div><div class="toc-name">UC-09 Digital Incentives</div><div class="toc-group">Technical</div></a>
+    <a class="toc-item" href="#s32"><div class="toc-num">32</div><div class="toc-name">UC-10 P&amp;L Attribution</div><div class="toc-group">Technical</div></a>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 01 — EXECUTIVE SUMMARY ═══════════════ -->
+<div class="section" id="s01">
+  <div class="section-header">
+    <div class="section-num">01</div>
+    <div class="section-meta">
+      <div class="section-group">Planning &amp; Analysis</div>
+      <div class="section-title">Executive Strategy Summary</div>
+      <div class="section-role">Audience: CFO, ALCO, Board &middot; Sidebar: Planning &rarr; Executive Summary</div>
+    </div>
+  </div>
+
+  <div class="screenshot-wrap">
+    <div class="screenshot-bar">
+      <div class="screenshot-dot" style="background:#ef4444"></div>
+      <div class="screenshot-dot" style="background:#eab308"></div>
+      <div class="screenshot-dot" style="background:#22c55e"></div>
+      <div class="screenshot-url">localhost:5173 &mdash; Executive Strategy Summary</div>
+      <div class="screenshot-badge">DEMO MODE</div>
+    </div>
+    <div class="screenshot"><img src="screenshots/01-executive-summary.png" alt="Executive Strategy Summary"></div>
+  </div>
+
+  <div class="script-box">
+    <div class="script-label">Presenter Script</div>
+    <div class="script-text">
+      This is the <strong>CFO's home screen</strong> &mdash; the single view an ALCO member opens each morning. At the top you see the <strong>aggregate modeled savings of PKR 44.6B</strong> across all 10 optimization engines. All engines are active, and the system shows <em>which engine contributes the most</em> to total value.<br><br>
+      The <strong>Savings by Use Case</strong> bar chart ranks all 10 engines by impact &mdash; the longest bar is your biggest opportunity. The <strong>Savings Share</strong> donut shows proportional contribution so you can see concentration risk.<br><br>
+      Below that is the <strong>Optimization Strategy Matrix</strong> &mdash; every engine's algorithm, savings estimate, and methodology in one table. This is the view that turns a technical optimization platform into a <em>board-ready executive summary</em>.
+    </div>
+  </div>
+
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Point to the PKR 44.6B total savings figure</div>
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Highlight the bar chart ranking engines by impact</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "Every number here is computed from your actual GL data"</div>
+    <div class="action action-click"><span class="action-icon">&#9755;</span> Scroll down to show the Strategy Matrix</div>
+  </div>
+
+  <div class="key-points">
+    <div class="key-point"><div class="key-point-label">Key Metric</div><div class="key-point-text">PKR 44.6B total modeled savings across all 10 engines at Tier-1 scale</div></div>
+    <div class="key-point"><div class="key-point-label">Banking Context</div><div class="key-point-text">At KIBOR 10.5%, every PKR 1B idle = PKR 105M/yr forgone. This is real money sitting in vaults and nostro accounts.</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 02 — USE CASE CATALOG ═══════════════ -->
+<div class="section" id="s02">
+  <div class="section-header">
+    <div class="section-num">02</div>
+    <div class="section-meta">
+      <div class="section-group">Technical</div>
+      <div class="section-title">Use Case Catalog</div>
+      <div class="section-role">Audience: Superuser / Technical Lead &middot; Sidebar: Technical &rarr; Use Case Catalog</div>
+    </div>
+  </div>
+
+  <div class="screenshot-wrap">
+    <div class="screenshot-bar">
+      <div class="screenshot-dot" style="background:#ef4444"></div>
+      <div class="screenshot-dot" style="background:#eab308"></div>
+      <div class="screenshot-dot" style="background:#22c55e"></div>
+      <div class="screenshot-url">localhost:5173 &mdash; Use Case Catalog</div>
+      <div class="screenshot-badge">DEMO MODE</div>
+    </div>
+    <div class="screenshot"><img src="screenshots/02-use-case-catalog.png" alt="Use Case Catalog"></div>
+  </div>
+
+  <div class="script-box">
+    <div class="script-label">Presenter Script</div>
+    <div class="script-text">
+      This is the <strong>technical catalog</strong> &mdash; all 10 optimization engines displayed as cards. Each card shows the <em>algorithm type</em> (LSTM, NSGA-II, DQN, Shapley, etc.), the <strong>estimated savings range</strong>, and a description of what the engine does.<br><br>
+      This is where a technical stakeholder can drill into any specific engine. Click any card to open the full technical dashboard for that use case &mdash; complete with model parameters, confidence intervals, and game theory scoring.
+    </div>
+  </div>
+
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Show the 10 engine cards with algorithm labels</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "Each engine uses a different ML/OR technique — no one-size-fits-all"</div>
+    <div class="action action-click"><span class="action-icon">&#9755;</span> Click UC-01 to open Vault Forecast dashboard</div>
+  </div>
+
+  <div class="key-points">
+    <div class="key-point"><div class="key-point-label">Differentiator</div><div class="key-point-text">10 purpose-built engines using LSTM, DQN, NSGA-II, Shapley, Nash &mdash; not generic analytics</div></div>
+    <div class="key-point"><div class="key-point-label">Architecture</div><div class="key-point-text">Each UC has its own service, API routes, and dashboard &mdash; modular and independently deployable</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 03 — COMMAND CENTER ═══════════════ -->
+<div class="section" id="s03">
+  <div class="section-header">
+    <div class="section-num">03</div>
+    <div class="section-meta">
+      <div class="section-group">Daily Operations</div>
+      <div class="section-title">Command Center</div>
+      <div class="section-role">Audience: All roles &middot; Sidebar: Command Center (top)</div>
+    </div>
+  </div>
+
+  <div class="screenshot-wrap">
+    <div class="screenshot-bar">
+      <div class="screenshot-dot" style="background:#ef4444"></div>
+      <div class="screenshot-dot" style="background:#eab308"></div>
+      <div class="screenshot-dot" style="background:#22c55e"></div>
+      <div class="screenshot-url">localhost:5173 &mdash; Command Center</div>
+      <div class="screenshot-badge">DEMO MODE</div>
+    </div>
+    <div class="screenshot"><img src="screenshots/03-command-center.png" alt="Command Center"></div>
+  </div>
+
+  <div class="script-box">
+    <div class="script-label">Presenter Script</div>
+    <div class="script-text">
+      The <strong>Command Center</strong> is the operational nerve center. The top KPI strip shows <strong>PKR 50.5B</strong> in total idle cash, <strong>PKR 5.0B</strong> estimated savings, and an <strong>81.9</strong> network efficiency score.<br><br>
+      Below that are <strong>AI-recommended cash transfers</strong> &mdash; the system has identified surplus-to-deficit matches across branches and recommends specific transfers with exact PKR amounts. Each transfer shows source branch, destination, amount, and an <em>"Execute Transfer"</em> button.<br><br>
+      On the right: the <strong>P&L Waterfall</strong> chart shows where value is being captured, and the <strong>Branch Network</strong> scatter visualizes cash distribution across the physical network.
+    </div>
+  </div>
+
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Point to the PKR 50.5B idle cash and 81.9 efficiency score</div>
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Walk through one AI-recommended transfer</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "This replaces the morning cash meeting — decisions are pre-computed"</div>
+    <div class="action action-click"><span class="action-icon">&#9755;</span> Click "Execute Transfer" to show the action workflow</div>
+  </div>
+
+  <div class="key-points">
+    <div class="key-point"><div class="key-point-label">Operational Impact</div><div class="key-point-text">Replaces manual branch-to-branch cash allocation with AI-driven recommendations</div></div>
+    <div class="key-point"><div class="key-point-label">Decision Speed</div><div class="key-point-text">Transfers are pre-matched — from hours of manual coordination to one-click execution</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 04 — ALERTS ═══════════════ -->
+<div class="section" id="s04">
+  <div class="section-header">
+    <div class="section-num">04</div>
+    <div class="section-meta">
+      <div class="section-group">Daily Operations</div>
+      <div class="section-title">Alerts &amp; Exceptions</div>
+      <div class="section-role">Audience: All roles &middot; Sidebar: Alerts (with badge count)</div>
+    </div>
+  </div>
+  <div class="screenshot-wrap">
+    <div class="screenshot-bar">
+      <div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div>
+      <div class="screenshot-url">localhost:5173 &mdash; Alerts &amp; Exceptions</div>
+      <div class="screenshot-badge">DEMO MODE</div>
+    </div>
+    <div class="screenshot"><img src="screenshots/04-alerts-exceptions.png" alt="Alerts"></div>
+  </div>
+  <div class="script-box">
+    <div class="script-label">Presenter Script</div>
+    <div class="script-text">The <strong>Alerts panel</strong> surfaces exceptions that need human attention &mdash; CRR breaches approaching minimum buffer, ATM stockout warnings, vault insurance limit violations, and netting opportunities exceeding PKR 3M threshold. Each alert has severity, source engine, and a direct <em>action link</em> to the relevant dashboard.</div>
+  </div>
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Show severity classification (Critical / Warning / Info)</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "The system monitors 1,500+ branches in real-time — you only see what needs your attention"</div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 05 — BRANCH ACTION PLAN ═══════════════ -->
+<div class="section" id="s05">
+  <div class="section-header">
+    <div class="section-num">05</div>
+    <div class="section-meta">
+      <div class="section-group">Daily Operations</div>
+      <div class="section-title">Branch Action Plan</div>
+      <div class="section-role">Audience: Branch Manager &middot; Sidebar: Daily &rarr; Branch Action Plan</div>
+    </div>
+  </div>
+  <div class="screenshot-wrap">
+    <div class="screenshot-bar">
+      <div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div>
+      <div class="screenshot-url">localhost:5173 &mdash; Branch Action Plan</div>
+      <div class="screenshot-badge">DEMO MODE</div>
+    </div>
+    <div class="screenshot"><img src="screenshots/05-branch-action-plan.png" alt="Branch Action Plan"></div>
+  </div>
+  <div class="script-box">
+    <div class="script-label">Presenter Script</div>
+    <div class="script-text">This is the <strong>Branch Manager's daily plan</strong>. Select any branch and see today's vault recommendation: <strong>RELEASE, REQUEST, or HOLD</strong> with the exact PKR amount. The plan includes denomination mix orders, insurance coverage status, Days-of-Cash metric, and forecast accuracy. This is the page a branch manager prints and acts on every morning.</div>
+  </div>
+  <div class="actions">
+    <div class="action action-click"><span class="action-icon">&#9755;</span> Select a specific branch from the dropdown</div>
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Show the RELEASE/REQUEST/HOLD action with PKR amount</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "Every branch gets a specific, actionable plan — not a report"</div>
+  </div>
+  <div class="key-points">
+    <div class="key-point"><div class="key-point-label">Action-First</div><div class="key-point-text">Tells branch managers exactly what to do — "Release PKR 16M" not "your vault utilization is 78%"</div></div>
+    <div class="key-point"><div class="key-point-label">KIBOR Cost</div><div class="key-point-text">Shows the daily cost of holding excess cash at KIBOR — makes idle cash tangible</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 06 — CIT & FLEET ═══════════════ -->
+<div class="section" id="s06">
+  <div class="section-header">
+    <div class="section-num">06</div>
+    <div class="section-meta"><div class="section-group">Daily Operations</div><div class="section-title">CIT &amp; Fleet</div><div class="section-role">Audience: Operations, Branch Managers &middot; Sidebar: Daily &rarr; CIT &amp; Fleet</div></div>
+  </div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; CIT &amp; Fleet</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/06-cit-fleet.png" alt="CIT Fleet"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>CIT Route Sheet</strong> shows optimized armored vehicle routes. The system uses VRPTW (Vehicle Routing with Time Windows) via OR-Tools to plan routes that minimize cost while respecting security constraints: <em>max PKR 100M per vehicle</em> (insurance), daylight-only 08:00-16:00, enhanced security in high-risk cities. Each route shows stops, distance, cost, and Shapley-based fair cost allocation.</div></div>
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Show route optimization with stop sequence</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "38% route cost reduction vs manual scheduling"</div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 07 — FORECAST ═══════════════ -->
+<div class="section" id="s07">
+  <div class="section-header"><div class="section-num">07</div><div class="section-meta"><div class="section-group">Daily Operations</div><div class="section-title">Forecast Dashboard</div><div class="section-role">Audience: Treasury, CFO, Regional Heads &middot; Sidebar: Daily &rarr; Forecast</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Forecast Dashboard</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/07-forecast-dashboard.png" alt="Forecast"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Forecast Dashboard</strong> shows ML-driven cash demand predictions. The LSTM model forecasts daily cash needs per branch with confidence intervals. The system automatically adjusts for <em>Eid, Ramadan, payroll cycles, and seasonal patterns</em>. Forecast accuracy is tracked with rolling MAPE &mdash; target is below 6%.</div></div>
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Show confidence bands around forecast line</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "The model learns from your branch-level GL history — no generic averages"</div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 08 — CONSOLIDATED DASHBOARD ═══════════════ -->
+<div class="section" id="s08">
+  <div class="section-header"><div class="section-num">08</div><div class="section-meta"><div class="section-group">Monitoring</div><div class="section-title">Consolidated Dashboard</div><div class="section-role">Audience: CFO, Regional Heads, Treasury &middot; Sidebar: Monitoring &rarr; Dashboard</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Dashboard</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/08-consolidated-dashboard.png" alt="Dashboard"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Consolidated Dashboard</strong> is the bank-wide monitoring view. Top-level KPIs: total branches, idle cash, efficiency score, and total modeled savings. Below: real-time status of CRR compliance, vault utilization trends, and network health. This is what the treasury desk has open on their Bloomberg terminal equivalent.</div></div>
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Highlight the top KPI strip</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "One screen to see the health of PKR 2.5 trillion in deposits"</div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 09 — REGIONAL VIEW ═══════════════ -->
+<div class="section" id="s09">
+  <div class="section-header"><div class="section-num">09</div><div class="section-meta"><div class="section-group">Monitoring</div><div class="section-title">Regional View</div><div class="section-role">Audience: Regional Head, CFO &middot; Sidebar: Monitoring &rarr; Regional View</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Regional View</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/09-regional-view.png" alt="Regional View"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Regional Head's view</strong> filters by city/region. Select Karachi and see: <strong>380 branches</strong>, network efficiency <strong>81.9%</strong>, total idle cash, and netting matches. The <em>Inter-Branch Cash Netting</em> table shows surplus-deficit pairs within 15km with estimated savings per transfer. The ATM Fleet Status panel tracks uptime and Days-of-Cash across all ATMs in the region.</div></div>
+  <div class="actions">
+    <div class="action action-click"><span class="action-icon">&#9755;</span> Change region dropdown to show different cities</div>
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Highlight netting opportunities with PKR savings</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "Regional heads see their territory, not the whole bank"</div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 10–12 — MONITORING ═══════════════ -->
+<div class="section" id="s10">
+  <div class="section-header"><div class="section-num">10</div><div class="section-meta"><div class="section-group">Monitoring</div><div class="section-title">Cash Pulse</div><div class="section-role">Audience: CFO &middot; Sidebar: Monitoring &rarr; Cash Pulse</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Cash Pulse</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/10-cash-pulse.png" alt="Cash Pulse"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text"><strong>Cash Pulse</strong> is the real-time heartbeat of the network. It shows cash flow velocity, inflow/outflow patterns, and anomaly detection. Think of it as the EKG for your cash network &mdash; spikes indicate branches drawing or depositing unusual amounts.</div></div>
+</div>
+
+<div class="section" id="s11">
+  <div class="section-header"><div class="section-num">11</div><div class="section-meta"><div class="section-group">Monitoring</div><div class="section-title">Vault Heatmap</div><div class="section-role">Audience: Regional Head, CFO &middot; Sidebar: Monitoring &rarr; Vault Heatmap</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Vault Heatmap</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/11-vault-heatmap.png" alt="Vault Heatmap"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Vault Heatmap</strong> visualizes vault utilization across all branches. Red = over-stocked (idle cash), green = optimally loaded. This instantly shows where money is trapped. A branch manager can identify their peers with excess cash for potential netting.</div></div>
+</div>
+
+<div class="section" id="s12">
+  <div class="section-header"><div class="section-num">12</div><div class="section-meta"><div class="section-group">Monitoring</div><div class="section-title">Branch Network Map</div><div class="section-role">Audience: Regional Head &middot; Sidebar: Monitoring &rarr; Branch Network</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Branch Network</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/12-branch-network-map.png" alt="Branch Network"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Branch Network Map</strong> plots all 1,500+ branches geographically. Node size = vault balance, color = efficiency score. Hover any branch to see its status. This is the bird's-eye view for strategic planning &mdash; where to deploy CDMs, which clusters need more CIT coverage.</div></div>
+</div>
+
+<!-- ═══════════════ PAGE 13–15 — TREASURY ═══════════════ -->
+<div class="section" id="s13">
+  <div class="section-header"><div class="section-num">13</div><div class="section-meta"><div class="section-group">Treasury</div><div class="section-title">Treasury Desk</div><div class="section-role">Audience: Treasury, CFO &middot; Sidebar: Treasury &rarr; Treasury Desk</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Treasury Desk</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/13-treasury-desk.png" alt="Treasury Desk"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Treasury Desk</strong> is the nerve center for regulatory compliance. The big decision: <strong>DEPLOY PKR 50.8B</strong> overnight at KIBOR 11.415%. The CRR Maintenance Week tracker shows day-by-day positions &mdash; the system optimizes to stay exactly at the minimum buffer, freeing maximum liquidity.<br><br>The <strong>Nostro Account Actions</strong> table below shows SWEEP/FUND/HOLD recommendations per correspondent bank with currency, balance, and overnight deployment rates. This replaces the morning treasury spreadsheet.</div></div>
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Point to "DEPLOY PKR 50.8B" as the key decision</div>
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Show CRR maintenance week day tracker</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "CRR earns 0% at SBP — every PKR freed earns KIBOR overnight"</div>
+  </div>
+</div>
+
+<div class="section" id="s14">
+  <div class="section-header"><div class="section-num">14</div><div class="section-meta"><div class="section-group">Treasury</div><div class="section-title">IEC Swap Hub</div><div class="section-role">Audience: Treasury &middot; Sidebar: Treasury &rarr; IEC Swap Hub</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; IEC Swap Hub</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/14-iec-swap-hub.png" alt="IEC Swap Hub"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>IEC Swap Hub</strong> manages inter-entity cash swaps. When one entity has excess PKR and another needs it, the system matches them with optimal transfer pricing. This eliminates the need for both entities to independently manage SBP reserves.</div></div>
+</div>
+
+<div class="section" id="s15">
+  <div class="section-header"><div class="section-num">15</div><div class="section-meta"><div class="section-group">Treasury</div><div class="section-title">SBP Rates Dashboard</div><div class="section-role">Audience: Treasury, CFO &middot; Sidebar: Treasury &rarr; SBP Rates</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; SBP Rates</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/15-sbp-rates.png" alt="SBP Rates"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">Live SBP rate parameters: <strong>policy rate, KIBOR overnight, CRR/SLR requirements</strong>, and penalty structures. All optimization engines reference these rates in real-time &mdash; when SBP changes the policy rate, the entire system recalibrates automatically.</div></div>
+</div>
+
+<!-- ═══════════════ PAGE 16–20 — PLANNING ═══════════════ -->
+<div class="section" id="s16">
+  <div class="section-header"><div class="section-num">16</div><div class="section-meta"><div class="section-group">Planning</div><div class="section-title">What-If Simulator</div><div class="section-role">Audience: CFO, Treasury &middot; Sidebar: Planning &rarr; What-If Simulator</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; What-If Simulator</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/16-what-if-simulator.png" alt="What-If Simulator"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>What-If Simulator</strong> lets you stress-test scenarios: what if KIBOR drops 200bps? What if Eid demand doubles? What if 10 branches close for renovations? Adjust parameters and see the instant impact on idle cash, savings, and CRR compliance. This is the tool for ALCO pre-meeting preparation.</div></div>
+  <div class="actions">
+    <div class="action action-click"><span class="action-icon">&#9755;</span> Adjust a parameter slider and show recalculated impact</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "Run scenarios in seconds, not days of spreadsheet work"</div>
+  </div>
+</div>
+
+<div class="section" id="s17">
+  <div class="section-header"><div class="section-num">17</div><div class="section-meta"><div class="section-group">Planning</div><div class="section-title">Seasonal Prep</div><div class="section-role">Audience: Treasury, Regional Heads &middot; Sidebar: Planning &rarr; Seasonal Prep</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Seasonal Prep</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/17-seasonal-prep.png" alt="Seasonal Prep"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text"><strong>Seasonal Preparation</strong> for Eid-ul-Fitr, Eid-ul-Adha, and Ramadan. The system pre-computes branch-level cash surges using Islamic calendar dates (hard-coded through 2027). Shows expected demand uplift, denomination mix adjustments (+15% small notes for Eidi), and pre-positioning recommendations weeks in advance.</div></div>
+</div>
+
+<div class="section" id="s18">
+  <div class="section-header"><div class="section-num">18</div><div class="section-meta"><div class="section-group">Planning</div><div class="section-title">Digital Shift Report</div><div class="section-role">Audience: CFO, Operations &middot; Sidebar: Planning &rarr; Digital Shift</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Digital Shift</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/18-digital-shift.png" alt="Digital Shift"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Digital Shift Report</strong> tracks cash-to-digital conversion. Key metric: <strong>PKR 95/cash transaction vs PKR 8/digital transaction</strong>. The system identifies cash-heavy branches and calculates ROI on digital migration campaigns. Aligned with SBP's CDM mandate requiring 25% of branches by CY2028.</div></div>
+</div>
+
+<div class="section" id="s19">
+  <div class="section-header"><div class="section-num">19</div><div class="section-meta"><div class="section-group">Planning</div><div class="section-title">CDM Deployment</div><div class="section-role">Audience: Operations, Compliance &middot; Sidebar: Planning &rarr; CDM Deployment</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; CDM Deployment</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/19-cdm-deployment.png" alt="CDM Deployment"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text"><strong>CDM Deployment &amp; Recycling</strong> plans Cash Deposit Machine rollout across the network. The system identifies branches with highest cash deposit volumes and recommends CDM placement priority. Tracks compliance against SBP's 25% CDM coverage mandate and calculates per-machine ROI from reduced cash handling costs.</div></div>
+</div>
+
+<div class="section" id="s20">
+  <div class="section-header"><div class="section-num">20</div><div class="section-meta"><div class="section-group">Planning</div><div class="section-title">P&amp;L Value Realized</div><div class="section-role">Audience: CFO &middot; Sidebar: Planning &rarr; P&amp;L Value Realized</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; P&amp;L Value Realized</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/20-pnl-waterfall.png" alt="P&L Waterfall"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>P&amp;L Waterfall</strong> shows the bottom line: <em>(Idle Cash Freed &times; KIBOR) &minus; Cash Operations Cost</em>. Each bar represents a source of value — vault optimization, ATM replenishment, CRR float, nostro repatriation. The final bar shows net value realized. This is the CFO's proof that the platform pays for itself.</div></div>
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Walk through the waterfall left to right</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "This is the number your board cares about — net value after all costs"</div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE 21–22 — COMPLIANCE ═══════════════ -->
+<div class="section" id="s21">
+  <div class="section-header"><div class="section-num">21</div><div class="section-meta"><div class="section-group">Compliance</div><div class="section-title">Compliance Monitor</div><div class="section-role">Audience: Compliance, CFO &middot; Sidebar: Compliance &rarr; Compliance Monitor</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Compliance Monitor</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/21-compliance-monitor.png" alt="Compliance Monitor"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">The <strong>Compliance Monitor</strong> tracks all SBP regulatory requirements: CRR (5% weekly avg, 4% daily min), SLR (19% min), CDM mandate (25% by CY2028), currency sorting (CMS 2015), and denomination penalties (PKR 100K for unprocessed notes). Green = compliant, Red = breach. This is the view the compliance officer presents to SBP during audits.</div></div>
+</div>
+
+<div class="section" id="s22">
+  <div class="section-header"><div class="section-num">22</div><div class="section-meta"><div class="section-group">Compliance</div><div class="section-title">Data Reconciliation</div><div class="section-role">Audience: Compliance &middot; Sidebar: Compliance &rarr; Data Reconciliation</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; Data Reconciliation</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/22-data-reconciliation.png" alt="Data Reconciliation"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text"><strong>Data Reconciliation</strong> validates that the BAIW data model is internally consistent: sum(child) = parent at every level. Transaction-level to daily GL to branch to bank-wide. This is the trust layer &mdash; before any optimization runs, the data must reconcile. Any discrepancy is flagged with source and magnitude.</div></div>
+</div>
+
+<!-- ═══════════════ PAGE 23–32 — TECHNICAL UC DASHBOARDS ═══════════════ -->
+<div class="section" id="s23">
+  <div class="section-header"><div class="section-num">23</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-01</div><div class="section-title">Branch Vault Cash Forecasting</div><div class="section-role">Algorithm: LSTM + Stochastic LP + Game Theory &middot; Impact: PKR 1.8&ndash;3.2B</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-01 Vault Forecast</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/23-uc01-vault-forecast.png" alt="UC-01"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-01 predicts daily cash needs per branch using <strong>LSTM neural networks</strong> trained on historical GL data. The optimization layer uses <em>2-stage stochastic LP (Sample Average Approximation)</em> to determine optimal vault levels under demand uncertainty. A game theory scoring layer ranks branches by cooperation potential. Select any branch to see its forecast, confidence bands, and optimization recommendation.</div></div>
+</div>
+
+<div class="section" id="s24">
+  <div class="section-header"><div class="section-num">24</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-02</div><div class="section-title">ATM Cash Replenishment</div><div class="section-role">Algorithm: LSTM + (s,S) DP + DQN + Stackelberg &middot; Impact: PKR 620&ndash;980M</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-02 ATM Replenishment</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/24-uc02-atm-replenishment.png" alt="UC-02"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-02 optimizes ATM fill levels using a <strong>Deep Q-Network (DQN) agent</strong> that learns optimal replenishment policies. The (s,S) inventory policy is computed via dynamic programming, and a <em>Stackelberg game</em> models the interaction between the bank and CIT provider. Target: 2.2 Days-of-Cash with 99.1% uptime across 2,180 ATMs.</div></div>
+</div>
+
+<div class="section" id="s25">
+  <div class="section-header"><div class="section-num">25</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-03</div><div class="section-title">Inter-Branch Cash Netting</div><div class="section-role">Algorithm: Min-Cost Network Flow + VCG Auction &middot; Impact: PKR 340&ndash;580M</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-03 Netting</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/25-uc03-netting.png" alt="UC-03"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-03 matches surplus and deficit branches using <strong>min-cost network flow</strong> optimization. The <em>VCG (Vickrey-Clarke-Groves) truthful auction</em> ensures branches report their true cash positions &mdash; game theory prevents hoarding. The city heatmap shows net surplus/deficit by region.</div></div>
+</div>
+
+<div class="section" id="s26">
+  <div class="section-header"><div class="section-num">26</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-04</div><div class="section-title">CRR Float Engineering</div><div class="section-role">Algorithm: 7-Day Rolling DP + Monte Carlo + Nash Equilibrium &middot; Impact: PKR 470&ndash;940M</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-04 CRR Float</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/26-uc04-crr-float.png" alt="UC-04"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-04 engineers the CRR maintenance week (Friday to Thursday) using <strong>backward induction dynamic programming</strong>. The system keeps daily CRR above the 4% floor while targeting exactly 5% weekly average &mdash; freeing maximum liquidity for overnight KIBOR deployment. Monte Carlo simulation stress-tests deposit volatility scenarios. A <em>Nash equilibrium model</em> with SBP captures the strategic interaction.</div></div>
+</div>
+
+<div class="section" id="s27">
+  <div class="section-header"><div class="section-num">27</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-05</div><div class="section-title">Nostro Balance Optimization</div><div class="section-role">Algorithm: Multi-Currency MDP + Nash Bargaining + FX Carry &middot; Impact: PKR 280&ndash;420M</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-05 Nostro</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/27-uc05-nostro.png" alt="UC-05"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-05 manages 35 correspondent bank accounts across 7 currencies as a unified portfolio. A <strong>Markov Decision Process</strong> with 7&times;3&times;3 state space optimizes SWEEP/FUND/HOLD actions. <em>Nash bargaining</em> determines fair terms with correspondent banks. FX carry analysis identifies when to repatriate to PKR (when carry &gt; 2%) vs overnight deposit abroad.</div></div>
+</div>
+
+<div class="section" id="s28">
+  <div class="section-header"><div class="section-num">28</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-06</div><div class="section-title">Vostro Liability Optimization</div><div class="section-role">Algorithm: Liquidity-at-Risk (99th pctl) + Shapley Value &middot; Impact: PKR 180&ndash;300M</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-06 Vostro</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/28-uc06-vostro.png" alt="UC-06"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-06 quantifies liquidity risk from 20 respondent bank accounts. <strong>Liquidity-at-Risk</strong> at 99th percentile determines the minimum reserve needed. The stable portion is deployed at 9.2% yield. <em>Shapley value allocation</em> fairly distributes cooperative gains across respondent relationships.</div></div>
+</div>
+
+<div class="section" id="s29">
+  <div class="section-header"><div class="section-num">29</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-07</div><div class="section-title">Denomination Mix Optimization</div><div class="section-role">Algorithm: NSGA-II Pareto Multi-Objective &middot; Impact: PKR 120&ndash;200M</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-07 Denomination</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/29-uc07-denomination.png" alt="UC-07"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-07 optimizes the mix of 7 denominations (Rs.5000 down to Rs.10) per branch using <strong>NSGA-II multi-objective optimization</strong>. Objectives: minimize SBP penalty, match demand, reduce stockouts. Includes Eid/Ramadan seasonal adjustments (+15% small notes for Eidi distribution). Target: 85% penalty reduction.</div></div>
+</div>
+
+<div class="section" id="s30">
+  <div class="section-header"><div class="section-num">30</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-08</div><div class="section-title">CIT Route Optimization</div><div class="section-role">Algorithm: VRPTW (OR-Tools) + Shapley Cost Allocation &middot; Impact: PKR 400&ndash;650M</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-08 CIT Routing</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/30-uc08-cit-routing.png" alt="UC-08"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-08 plans routes for 150 armored vehicles using <strong>VRPTW via Google OR-Tools</strong>. Constraints: max PKR 100M per vehicle (insurance), daylight-only hours, enhanced security in Karachi/Peshawar/Quetta. <em>Shapley value</em> allocates CIT costs fairly across branches served by each route. Includes emergency rerouting capability.</div></div>
+</div>
+
+<div class="section" id="s31">
+  <div class="section-header"><div class="section-num">31</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-09</div><div class="section-title">Digital Channel Incentivization</div><div class="section-role">Algorithm: Thompson Sampling (MAB) + Subgame Perfect Equilibrium &middot; Impact: PKR 800M&ndash;1.4B</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-09 Digital</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/31-uc09-digital-incentives.png" alt="UC-09"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-09 uses <strong>Thompson sampling (multi-armed bandit)</strong> across 5 customer segments to learn which incentives drive cash-to-digital conversion. The <em>subgame perfect equilibrium</em> models the strategic interaction between the bank and customers. PKR 500M budget with target +18% digital conversion rate. A/B test simulation validates each campaign before deployment.</div></div>
+</div>
+
+<div class="section" id="s32">
+  <div class="section-header"><div class="section-num">32</div><div class="section-meta"><div class="section-group">Technical &mdash; UC-10</div><div class="section-title">Cash P&amp;L Attribution</div><div class="section-role">Algorithm: ABC Costing + Transfer Pricing + Tournament &middot; Impact: PKR 2.8&ndash;4.0B</div></div></div>
+  <div class="screenshot-wrap"><div class="screenshot-bar"><div class="screenshot-dot" style="background:#ef4444"></div><div class="screenshot-dot" style="background:#eab308"></div><div class="screenshot-dot" style="background:#22c55e"></div><div class="screenshot-url">localhost:5173 &mdash; UC-10 P&amp;L</div><div class="screenshot-badge">DEMO MODE</div></div><div class="screenshot"><img src="screenshots/32-uc10-pnl.png" alt="UC-10"></div></div>
+  <div class="script-box"><div class="script-label">Presenter Script</div><div class="script-text">UC-10 is the accountability engine. <strong>Activity-Based Costing</strong> across 10 cost pools allocates every rupee of cash handling cost to branches. <em>Transfer pricing</em> shows the internal cost of capital movement. A <strong>tournament ranking</strong> creates a branch efficiency leaderboard &mdash; making cash management a competitive sport. The ALCO report combines all engines into a single board presentation.</div></div>
+  <div class="actions">
+    <div class="action action-point"><span class="action-icon">&#9758;</span> Show the branch ranking leaderboard</div>
+    <div class="action action-say"><span class="action-icon">&#128172;</span> "This is where optimization becomes culture — branch managers compete on efficiency"</div>
+  </div>
+</div>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<div class="doc-footer">
+  <div class="logo">
+    <div class="logo-icon">&#20116;&#22823;</div>
+    <div class="logo-text">godai<span>tec</span></div>
+  </div>
+  <p>&copy; 2026 Godaitec Private Limited &mdash; All Rights Reserved</p>
+  <p><a href="mailto:info@godai.tech">info@godai.tech</a> &middot; www.godai.tech &middot; linkedin.com/company/godaitec-private-limited</p>
+  <p style="margin-top:16px;font:400 11px var(--mono);color:var(--dim)">
+    All data shown is synthetic, modeled at Tier-1 commercial bank scale.
+    No real banking data is displayed. Screenshots captured from live demo instance.
+  </p>
+</div>
+
+<script>
+// Smooth scroll for TOC links
+document.querySelectorAll('.toc-item').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    document.querySelector(a.getAttribute('href')).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+// Copy protection
+document.addEventListener('contextmenu', e => e.preventDefault());
+</script>
+</body>
+</html>

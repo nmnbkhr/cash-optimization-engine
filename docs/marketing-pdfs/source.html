@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1100, initial-scale=1">
+<title>Godaitec — Cash Optimization Engine | Confidential</title>
+<meta name="author" content="Godaitec Private Limited">
+<meta name="description" content="Cash Optimization Engine — Proprietary & Confidential">
+<meta name="robots" content="noindex, nofollow">
+<meta name="copyright" content="2026 Godaitec Private Limited. All Rights Reserved.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0e17;
+  --bg-card:   #0f1923;
+  --bg-card2:  #131d2a;
+  --border:    #1a2538;
+  --gold:      #d4a853;
+  --gold-dim:  #b8923e;
+  --teal:      #2dd4bf;
+  --red:       #ef4444;
+  --green:     #22c55e;
+  --cyan:      #06b6d4;
+  --yellow:    #eab308;
+  --white:     #e2e8f0;
+  --muted:     #94a3b8;
+  --dim:       #64748b;
+  --font-data: 'JetBrains Mono', monospace;
+  --font-ui:   'Space Grotesk', sans-serif;
+}
+
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Slide Container ──────────────────────────────────────── */
+.vp { width: 1100px; min-height: 820px; margin: 0 auto; overflow: hidden; position: relative; }
+.sl { display: none; width: 100%; min-height: 820px; padding: 36px 48px 60px; position: relative; }
+.sl.active { display: block; }
+
+/* ── Navigation (screen only) ─────────────────────────────── */
+.nv {
+  display: flex; gap: 4px; justify-content: center;
+  padding: 12px 0; background: #060810; position: sticky; top: 0; z-index: 100;
+}
+.nv button {
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--muted);
+  padding: 6px 14px; border-radius: 4px; cursor: pointer; font: 500 11px var(--font-ui);
+  transition: all .2s;
+}
+.nv button:hover, .nv button.active { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+
+/* ── Header / Footer / Watermark ──────────────────────────── */
+.hdr {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 32px;
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+}
+.logo-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #c0392b, #e74c3c);
+  display: flex; align-items: center; justify-content: center;
+  font: bold 14px var(--font-ui); color: #fff;
+}
+.logo-text {
+  font: 600 22px var(--font-ui); color: var(--white);
+  letter-spacing: 0.5px;
+}
+.logo-text span { color: var(--gold); }
+.hdr-right {
+  font: 500 11px var(--font-data); color: var(--dim);
+  letter-spacing: 2px; text-transform: uppercase;
+}
+
+.ftr {
+  position: absolute; bottom: 16px; left: 48px; right: 48px;
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 12px; border-top: 1px solid var(--border);
+}
+.ftr .logo { transform: scale(0.7); transform-origin: left center; }
+.ftr-links {
+  font: 400 11px var(--font-data); color: var(--dim);
+  text-align: right; line-height: 1.6;
+}
+.ftr-links a { color: var(--gold); text-decoration: none; }
+
+.watermark {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg);
+  font: bold 80px var(--font-ui); color: rgba(212, 168, 83, 0.03);
+  pointer-events: none; white-space: nowrap; z-index: 0;
+  letter-spacing: 20px; text-transform: uppercase;
+}
+
+/* ── Breadcrumb ───────────────────────────────────────────── */
+.crumb { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.crumb-tag {
+  font: 700 12px var(--font-data); color: var(--gold);
+  letter-spacing: 2px;
+}
+.crumb-sep { width: 2px; height: 16px; background: var(--dim); }
+.crumb-label { font: 500 13px var(--font-ui); color: var(--muted); }
+
+/* ── Typography ───────────────────────────────────────────── */
+h1 { font: 700 42px var(--font-ui); line-height: 1.15; margin-bottom: 12px; }
+h2 { font: 700 32px var(--font-ui); line-height: 1.2; margin-bottom: 8px; }
+h3 { font: 600 20px var(--font-ui); line-height: 1.3; }
+.subtitle { font: 400 17px var(--font-ui); color: var(--muted); line-height: 1.5; margin-bottom: 24px; }
+.section-label {
+  font: 700 11px var(--font-data); color: var(--gold);
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 12px;
+}
+.section-label-teal {
+  font: 700 11px var(--font-data); color: var(--teal);
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 12px;
+}
+
+/* ── Cards ────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px;
+}
+
+/* ── KPI Strip ────────────────────────────────────────────── */
+.kpi-strip {
+  display: flex; gap: 0;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  margin: 20px 0;
+}
+.kpi-strip .kpi {
+  flex: 1; padding: 16px 24px;
+  border-right: 1px solid var(--border);
+}
+.kpi-strip .kpi:last-child { border-right: none; }
+.kpi-label {
+  font: 600 10px var(--font-data); color: var(--dim);
+  letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;
+}
+.kpi-value { font: 700 28px var(--font-data); line-height: 1.2; }
+.kpi-sub { font: 400 11px var(--font-ui); color: var(--dim); margin-top: 2px; }
+
+/* ── Tags Row ─────────────────────────────────────────────── */
+.tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.tag {
+  font: 500 12px var(--font-ui); color: var(--white);
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: 20px;
+  background: var(--bg-card);
+}
+
+/* ── Bullet Row ───────────────────────────────────────────── */
+.bullets { display: flex; gap: 24px; margin: 16px 0; }
+.bullet { display: flex; align-items: center; gap: 8px; font: 400 12px var(--font-ui); color: var(--muted); }
+.bullet-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Table ────────────────────────────────────────────────── */
+.tbl { width: 100%; border-collapse: collapse; margin: 16px 0; }
+.tbl th {
+  font: 600 11px var(--font-data); color: var(--dim);
+  text-transform: uppercase; letter-spacing: 1px;
+  text-align: left; padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.tbl td {
+  font: 400 13px var(--font-ui); color: var(--white);
+  padding: 12px 16px; border-bottom: 1px solid rgba(26,37,56,0.5);
+}
+.tbl tr:hover td { background: rgba(45,212,191,0.03); }
+
+/* ── Grid Helpers ─────────────────────────────────────────── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+
+/* ── Color Utilities ──────────────────────────────────────── */
+.c-gold   { color: var(--gold); }
+.c-teal   { color: var(--teal); }
+.c-red    { color: var(--red); }
+.c-green  { color: var(--green); }
+.c-cyan   { color: var(--cyan); }
+.c-yellow { color: var(--yellow); }
+.c-muted  { color: var(--muted); }
+.c-dim    { color: var(--dim); }
+
+/* ── Engine Card ──────────────────────────────────────────── */
+.engine-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 18px 20px;
+  display: flex; align-items: flex-start; gap: 14px;
+}
+.engine-icon {
+  width: 42px; height: 42px; border-radius: 8px;
+  background: var(--bg-card2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.engine-body { flex: 1; }
+.engine-num { font: 700 13px var(--font-data); margin-right: 8px; }
+.engine-name { font: 600 14px var(--font-ui); }
+.engine-desc { font: 400 12px var(--font-ui); color: var(--muted); margin: 4px 0; }
+.engine-val { font: 700 13px var(--font-data); color: var(--teal); }
+
+/* ── Role Card ────────────────────────────────────────────── */
+.role-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 22px;
+}
+.role-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.role-icon {
+  width: 38px; height: 38px; border-radius: 8px;
+  background: var(--bg-card2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+}
+.role-title { font: 600 15px var(--font-ui); }
+.role-sub { font: 400 12px var(--font-ui); color: var(--dim); }
+.role-metrics { display: flex; gap: 12px; margin: 12px 0; }
+.role-metric { text-align: center; flex: 1; }
+.role-metric-label { font: 500 9px var(--font-data); color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+.role-metric-val { font: 700 18px var(--font-data); margin: 4px 0; }
+.role-metric-sub { font: 400 10px var(--font-ui); color: var(--dim); }
+.role-insight {
+  background: var(--bg-card2); border-left: 2px solid var(--teal);
+  padding: 10px 14px; border-radius: 4px; margin-top: 12px;
+  font: 400 11px var(--font-ui); color: var(--muted); line-height: 1.5;
+}
+.role-insight .c-teal { font-weight: 600; }
+
+/* ── Phase Timeline ───────────────────────────────────────── */
+.timeline { display: flex; align-items: flex-start; justify-content: center; gap: 0; margin: 32px 0; position: relative; }
+.timeline-line { position: absolute; top: 28px; left: 22%; right: 22%; height: 2px; background: var(--border); }
+.phase { text-align: center; flex: 1; position: relative; z-index: 1; }
+.phase-circle {
+  width: 56px; height: 56px; border-radius: 50%;
+  border: 2px solid var(--gold); background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font: 700 20px var(--font-data); color: var(--gold);
+  margin: 0 auto 14px;
+}
+.phase-circle.teal { border-color: var(--teal); color: var(--teal); }
+.phase-circle.green { border-color: var(--green); color: var(--green); }
+.phase-name { font: 700 15px var(--font-ui); margin-bottom: 4px; }
+.phase-weeks { font: 500 12px var(--font-data); color: var(--dim); margin-bottom: 10px; }
+.phase-desc { font: 400 12px var(--font-ui); color: var(--muted); line-height: 1.5; max-width: 220px; margin: 0 auto; }
+.phase-badge {
+  display: inline-block; margin-top: 10px; padding: 4px 12px;
+  border-radius: 12px; font: 600 10px var(--font-data); letter-spacing: 0.5px;
+}
+.phase-badge.green { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+.phase-badge.teal { background: rgba(45,212,191,0.15); color: var(--teal); border: 1px solid rgba(45,212,191,0.3); }
+
+/* ── BAIW Cards ───────────────────────────────────────────── */
+.baiw-card { text-align: center; }
+.baiw-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--bg-card2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; margin: 0 auto 14px;
+}
+.baiw-letter { font: 700 15px var(--font-ui); margin-bottom: 4px; }
+.baiw-desc { font: 400 12px var(--font-ui); color: var(--muted); line-height: 1.6; }
+
+/* ── Impact Hero ──────────────────────────────────────────── */
+.impact-hero { text-align: center; padding: 100px 0 40px; }
+.impact-number { font: 700 72px var(--font-data); line-height: 1; margin-bottom: 16px; }
+.impact-sub { font: 400 18px var(--font-ui); color: var(--muted); margin-bottom: 48px; }
+.impact-stats { display: flex; justify-content: center; gap: 64px; }
+.impact-stat { text-align: center; }
+.impact-stat-val { font: 700 48px var(--font-data); line-height: 1; margin-bottom: 8px; }
+.impact-stat-label { font: 400 12px var(--font-ui); color: var(--muted); line-height: 1.4; }
+
+/* ── Vault Hero Card ──────────────────────────────────────── */
+.vault-hero {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 32px; text-align: center; margin-bottom: 24px;
+}
+.vault-label { font: 700 11px var(--font-data); color: var(--gold); letter-spacing: 3px; margin-bottom: 12px; }
+.vault-amount { font: 700 56px var(--font-data); line-height: 1; margin-bottom: 12px; }
+.vault-detail { font: 400 14px var(--font-ui); color: var(--muted); }
+
+/* ── Demo Screenshot ──────────────────────────────────────── */
+.demo-frame {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; margin: 20px 0;
+}
+.demo-frame-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.demo-frame-title { font: 600 14px var(--font-ui); }
+.demo-badge {
+  background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3);
+  padding: 4px 12px; border-radius: 4px; font: 700 10px var(--font-data); letter-spacing: 1px;
+}
+.demo-img {
+  width: 100%; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); min-height: 380px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dim); font: 400 13px var(--font-ui);
+}
+.demo-callouts { display: flex; gap: 0; margin-top: 12px; }
+.demo-callout { flex: 1; padding: 8px 16px; border-right: 1px solid var(--border); }
+.demo-callout:last-child { border-right: none; }
+.demo-callout-label { font: 700 10px var(--font-data); letter-spacing: 1px; }
+
+/* ── Comparison Box ───────────────────────────────────────── */
+.compare-box {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 24px; margin-top: 24px;
+}
+.compare-title { font: 600 15px var(--font-ui); margin-bottom: 16px; }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.compare-col h4 { font: 600 13px var(--font-ui); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.compare-col p { font: 400 12px var(--font-ui); color: var(--muted); line-height: 1.6; }
+
+/* ── CTA Bar ──────────────────────────────────────────────── */
+.cta-bar {
+  background: linear-gradient(135deg, rgba(212,168,83,0.15), rgba(212,168,83,0.05));
+  border: 1px solid rgba(212,168,83,0.3); border-radius: 10px;
+  padding: 18px 32px; text-align: center; margin-top: 24px;
+  font: 500 15px var(--font-ui);
+}
+.cta-bar a { color: var(--gold); text-decoration: none; font-weight: 700; }
+
+/* ── Benefit Grid ─────────────────────────────────────────── */
+.benefit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+.benefit {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px;
+}
+.benefit-title { font: 600 14px var(--font-ui); margin-bottom: 6px; }
+.benefit-desc { font: 400 12px var(--font-ui); color: var(--muted); line-height: 1.5; }
+
+/* ── Disclaimer ───────────────────────────────────────────── */
+.disclaimer {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 36px 40px; margin: 40px 0;
+}
+.disclaimer h3 { font: 700 14px var(--font-data); color: var(--dim); letter-spacing: 2px; margin-bottom: 20px; }
+.disclaimer p { font: 400 13px var(--font-ui); color: var(--muted); line-height: 1.8; margin-bottom: 14px; }
+.disclaimer strong { color: var(--white); }
+.disclaimer .copy { font: 500 13px var(--font-ui); color: var(--white); margin-top: 24px; }
+.disclaimer .copy a { color: var(--teal); text-decoration: none; }
+
+/* ── Engagement Badge ─────────────────────────────────────── */
+.engage-badge {
+  display: inline-block; padding: 6px 18px;
+  background: rgba(212,168,83,0.12); border: 1px solid rgba(212,168,83,0.3);
+  border-radius: 20px; font: 600 11px var(--font-data); color: var(--gold);
+  letter-spacing: 0.5px; margin: 12px auto; text-align: center;
+}
+
+/* ── Problem Box ──────────────────────────────────────────── */
+.problem-box {
+  background: var(--bg-card); border-left: 3px solid var(--red);
+  border-radius: 8px; padding: 24px 28px; margin: 20px 0;
+}
+.problem-label { font: 700 11px var(--font-data); color: var(--red); letter-spacing: 2px; margin-bottom: 10px; }
+.problem-text { font: 400 15px var(--font-ui); line-height: 1.6; }
+.problem-note { font: 400 11px var(--font-ui); color: var(--dim); font-style: italic; margin-top: 10px; }
+
+/* ── Print ────────────────────────────────────────────────── */
+@media print {
+  .nv { display: none !important; }
+  .sl { display: block !important; page-break-after: always; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ NAVIGATION ═══════════════ -->
+<div class="nv">
+  <button class="active" onclick="go(0)">Cover</button>
+  <button onclick="go(1)">Branch Plan</button>
+  <button onclick="go(2)">10 Engines</button>
+  <button onclick="go(3)">Impact</button>
+  <button onclick="go(4)">Stakeholders</button>
+  <button onclick="go(5)">Demo</button>
+  <button onclick="go(6)">BAIW</button>
+  <button onclick="go(7)">Engagement</button>
+  <button onclick="go(8)">Disclaimer</button>
+</div>
+
+<div class="vp">
+
+<!-- ═══════════════ SLIDE 1 — HERO / COVER ═══════════════ -->
+<section class="sl active" id="hero">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right">Confidential</div>
+  </div>
+
+  <h1>Cash Optimization<br><span class="c-gold">Engine</span></h1>
+  <p class="subtitle">Turning idle cash into earning assets across your entire branch, ATM,<br>and treasury network &mdash; powered by advanced optimization.</p>
+
+  <div class="problem-box">
+    <div class="problem-label">The Problem</div>
+    <p class="problem-text">
+      Commercial banks hold <strong>20&ndash;40% excess cash</strong> across vaults, ATMs, and
+      treasury positions. At KIBOR 11%, every <span class="c-gold"><strong>PKR 1B idle &asymp; PKR 110M/year</strong></span> in
+      foregone interest.
+    </p>
+    <p class="problem-note">Governed by SBP CRR requirements, branch vault insurance limits, ATM cash-out thresholds, and currency chest service charges &mdash; all modeled within COE.</p>
+  </div>
+
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Modeled Annual Value</div>
+      <div class="kpi-value c-gold">~PKR 7.8&ndash;12.7B</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Projected ROI</div>
+      <div class="kpi-value c-teal">6&ndash;9 Months</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Pilot Duration</div>
+      <div class="kpi-value c-red">4 Weeks</div>
+    </div>
+  </div>
+
+  <div class="section-label-teal">10 Integrated Optimization Engines</div>
+  <div class="tags">
+    <span class="tag">Branch Vault Forecasting</span>
+    <span class="tag">ATM Replenishment</span>
+    <span class="tag">Inter-Branch Netting</span>
+    <span class="tag">Regulatory Reserve Engineering</span>
+    <span class="tag">Nostro Optimization</span>
+    <span class="tag">Vostro Liability Mgmt</span>
+    <span class="tag">Denomination Mix</span>
+    <span class="tag">CIT Route Optimization</span>
+    <span class="tag">Digital Incentivization</span>
+    <span class="tag">Cash P&amp;L Attribution</span>
+  </div>
+
+  <div class="bullets">
+    <span class="bullet"><span class="bullet-dot" style="background:var(--teal)"></span>100% On-Premise</span>
+    <span class="bullet"><span class="bullet-dot" style="background:var(--green)"></span>No Cloud Dependency</span>
+    <span class="bullet"><span class="bullet-dot" style="background:var(--gold)"></span>Your Data Never Leaves</span>
+    <span class="bullet"><span class="bullet-dot" style="background:var(--cyan)"></span>GPU-Accelerated</span>
+  </div>
+
+  <div class="ftr">
+    <div class="logo" style="transform:scale(0.65);transform-origin:left center">
+      <div class="logo-icon" style="font-size:11px">&#20116;&#22823;</div>
+      <div class="logo-text" style="font-size:17px">godai<span>tec</span></div>
+    </div>
+    <div class="ftr-links">
+      www.godai.tech &middot; <a href="mailto:info@godai.tech">info@godai.tech</a><br>
+      linkedin.com/company/godaitec-private-limited
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 2 — BRANCH MANAGER ═══════════════ -->
+<section class="sl" id="branch">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right">09 APR 2026</div>
+  </div>
+
+  <div class="crumb">
+    <span class="crumb-tag">COE</span>
+    <span class="crumb-sep"></span>
+    <span class="crumb-label">Branch Manager</span>
+  </div>
+  <h2>Daily Vault Plan</h2>
+
+  <div class="vault-hero">
+    <div class="vault-label">Today's Vault Target</div>
+    <div class="vault-amount">PKR <span class="c-teal">42</span>M</div>
+    <div class="vault-detail">
+      Current: PKR 58M &middot; <span class="c-teal">PKR 16M excess</span> &middot; Est. potential: <span class="c-gold">~PKR 1.76M/yr</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3>Regional Branch Status</h3>
+      <span class="c-dim" style="font:400 12px var(--font-data)">South Region &middot; 5 of 47 branches</span>
+    </div>
+    <table class="tbl">
+      <thead>
+        <tr><th>Branch</th><th>Code</th><th>Current</th><th>Optimal</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Clifton Main</strong></td><td class="c-dim">KHI-001</td><td>58M</td><td class="c-teal">42M</td><td class="c-red">&darr; Release 16M</td></tr>
+        <tr><td><strong>Gulshan-e-Iqbal</strong></td><td class="c-dim">KHI-014</td><td>35M</td><td class="c-teal">31M</td><td class="c-red">&darr; Release 4M</td></tr>
+        <tr><td><strong>Saddar</strong></td><td class="c-dim">KHI-003</td><td>22M</td><td class="c-teal">28M</td><td class="c-green">&uarr; Request 6M</td></tr>
+        <tr><td><strong>Defence Phase V</strong></td><td class="c-dim">KHI-007</td><td>44M</td><td class="c-teal">39M</td><td class="c-red">&darr; Release 5M</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Days of Cash</div>
+      <div class="kpi-value c-red">1.8</div>
+      <div class="kpi-sub">Target: 2.0</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Insurance Cover</div>
+      <div class="kpi-value c-yellow">78%</div>
+      <div class="kpi-sub">Limit: PKR 60M</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Forecast Accuracy</div>
+      <div class="kpi-value c-teal">94.2%</div>
+      <div class="kpi-sub">7-day rolling</div>
+    </div>
+  </div>
+
+  <div class="ftr">
+    <div class="logo" style="transform:scale(0.65);transform-origin:left center">
+      <div class="logo-icon" style="font-size:11px">&#20116;&#22823;</div>
+      <div class="logo-text" style="font-size:17px">godai<span>tec</span></div>
+    </div>
+    <div class="ftr-links">
+      www.godai.tech &middot; <a href="mailto:info@godai.tech">info@godai.tech</a><br>
+      linkedin.com/company/godaitec-private-limited
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 3 — 10 ENGINES ═══════════════ -->
+<section class="sl" id="engines">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right"></div>
+  </div>
+
+  <div class="section-label" style="text-align:center">Cash Optimization Engine</div>
+  <h2 style="text-align:center;font-size:36px;margin-bottom:6px">10 Integrated Engines</h2>
+  <p style="text-align:center;color:var(--muted);font-size:14px;margin-bottom:28px">Each engine targets a specific source of idle cash &mdash; together they cover the entire cash lifecycle</p>
+
+  <div class="grid-2" style="gap:12px">
+    <div class="engine-card">
+      <div class="engine-icon">&#127974;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">01</span><span class="engine-name">Branch Vault Forecasting</span></div>
+        <div class="engine-desc">Predicts how much cash each branch needs daily</div>
+        <div class="engine-val">~PKR 1.8&ndash;3.2B</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#129489;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">02</span><span class="engine-name">ATM Replenishment</span></div>
+        <div class="engine-desc">Learns optimal fill levels to eliminate cash-outs</div>
+        <div class="engine-val">~PKR 620&ndash;980M</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#128257;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">03</span><span class="engine-name">Inter-Branch Netting</span></div>
+        <div class="engine-desc">Moves surplus cash between branches, saves CIT</div>
+        <div class="engine-val">~PKR 340&ndash;580M</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#128202;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">04</span><span class="engine-name">Regulatory Reserve Engineering</span></div>
+        <div class="engine-desc">Maintains SBP compliance at minimum buffer</div>
+        <div class="engine-val">~PKR 470&ndash;940M</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#127760;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">05</span><span class="engine-name">Nostro Optimization</span></div>
+        <div class="engine-desc">Manages FX as a unified portfolio</div>
+        <div class="engine-val">~PKR 280&ndash;420M</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#128176;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">06</span><span class="engine-name">Vostro Liability Mgmt</span></div>
+        <div class="engine-desc">Quantifies correspondent liquidity risk</div>
+        <div class="engine-val">~PKR 180&ndash;300M</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#128181;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">07</span><span class="engine-name">Denomination Mix</span></div>
+        <div class="engine-desc">Matches denomination orders to demand</div>
+        <div class="engine-val">~PKR 120&ndash;200M</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#128666;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">08</span><span class="engine-name">CIT Route Optimization</span></div>
+        <div class="engine-desc">Plans fastest armored vehicle routes</div>
+        <div class="engine-val">~PKR 400&ndash;650M</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#128241;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">09</span><span class="engine-name">Digital Incentivization</span></div>
+        <div class="engine-desc">Nudges customers toward digital channels</div>
+        <div class="engine-val">~PKR 800&ndash;1.4B</div>
+      </div>
+    </div>
+    <div class="engine-card">
+      <div class="engine-icon">&#128200;</div>
+      <div class="engine-body">
+        <div><span class="engine-num c-red">10</span><span class="engine-name">Cash P&amp;L Attribution</span></div>
+        <div class="engine-desc">Shows where cash costs you money</div>
+        <div class="engine-val">~PKR 2.8&ndash;4.0B</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-bar" style="margin-top:20px">
+    Estimated Combined Annual Impact: <strong class="c-gold" style="font:700 22px var(--font-data)">~PKR 7.8&ndash;12.7 Billion</strong>
+  </div>
+
+  <div class="ftr">
+    <div class="logo" style="transform:scale(0.65);transform-origin:left center">
+      <div class="logo-icon" style="font-size:11px">&#20116;&#22823;</div>
+      <div class="logo-text" style="font-size:17px">godai<span>tec</span></div>
+    </div>
+    <div class="ftr-links">
+      www.godai.tech &middot; <a href="mailto:info@godai.tech">info@godai.tech</a><br>
+      linkedin.com/company/godaitec-private-limited
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 4 — IMPACT NUMBERS ═══════════════ -->
+<section class="sl" id="impact">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right"></div>
+  </div>
+
+  <div class="impact-hero">
+    <div class="section-label" style="text-align:center;margin-bottom:20px">Projected Impact at Tier-1 Scale</div>
+    <div class="impact-number">~PKR <span class="c-teal">7.8</span>&ndash;<span class="c-gold">12.7</span>B</div>
+    <div class="impact-sub">Annual modeled value for a 1,500-branch, 2,000-ATM commercial bank</div>
+
+    <div class="impact-stats">
+      <div class="impact-stat">
+        <div class="impact-stat-val c-gold">20&ndash;40%</div>
+        <div class="impact-stat-label">Excess cash<br>across networks</div>
+      </div>
+      <div class="impact-stat">
+        <div class="impact-stat-val c-teal">11%</div>
+        <div class="impact-stat-label">Current KIBOR<br>benchmark</div>
+      </div>
+      <div class="impact-stat">
+        <div class="impact-stat-val c-cyan">10</div>
+        <div class="impact-stat-label">Integrated<br>engines</div>
+      </div>
+      <div class="impact-stat">
+        <div class="impact-stat-val c-red">4 wks</div>
+        <div class="impact-stat-label">Pilot on<br>your data</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:40px">
+    <div class="logo" style="display:inline-flex;transform:scale(1.2)">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div style="margin-top:14px;font:400 12px var(--font-data);color:var(--dim)">
+      <a href="mailto:info@godai.tech" style="color:var(--gold);text-decoration:none">info@godai.tech</a>
+      <span style="margin:0 12px;color:var(--border)">|</span>
+      <span>LinkedIn</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 5 — ROLE DASHBOARDS ═══════════════ -->
+<section class="sl" id="roles">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right">Role-Based Dashboards</div>
+  </div>
+
+  <div class="crumb">
+    <span class="crumb-tag">COE</span>
+    <span class="crumb-sep"></span>
+    <span class="crumb-label">Quick Snapshots</span>
+  </div>
+  <h2>What Each Stakeholder Sees</h2>
+  <p class="subtitle" style="font-size:14px">COE delivers role-specific decisions &mdash; not generic dashboards. Each persona sees exactly what they need to act.</p>
+
+  <div class="grid-2" style="gap:16px">
+    <div class="role-card">
+      <div class="role-header">
+        <div class="role-icon">&#127963;</div>
+        <div><div class="role-title">Regional Head</div><div class="role-sub">Network Cash Heatmap &amp; Netting</div></div>
+      </div>
+      <div class="role-metrics">
+        <div class="role-metric"><div class="role-metric-label">South (KHI)</div><div class="role-metric-val c-red">~312M</div><div class="role-metric-sub">surplus</div></div>
+        <div class="role-metric"><div class="role-metric-label">North (ISB)</div><div class="role-metric-val c-green">~45M</div><div class="role-metric-sub">deficit</div></div>
+        <div class="role-metric"><div class="role-metric-label">Central (LHR)</div><div class="role-metric-val c-teal">~187M</div><div class="role-metric-sub">surplus</div></div>
+      </div>
+      <div class="role-insight">Auto-generated netting orders move surplus cash between branches &mdash; <span class="c-teal">~3 CIT trips avoided, ~PKR 0.54M est. daily savings</span></div>
+    </div>
+
+    <div class="role-card">
+      <div class="role-header">
+        <div class="role-icon">&#127975;</div>
+        <div><div class="role-title">Treasury / ALM</div><div class="role-sub">Regulatory Reserve &amp; Nostro Position</div></div>
+      </div>
+      <div class="role-metrics">
+        <div class="role-metric"><div class="role-metric-label">CRR Buffer</div><div class="role-metric-val c-green">12 bps</div><div class="role-metric-sub">above SBP min</div></div>
+        <div class="role-metric"><div class="role-metric-label">Excess Freed</div><div class="role-metric-val c-gold">~PKR 323M</div><div class="role-metric-sub">now earning</div></div>
+        <div class="role-metric"><div class="role-metric-label">Nostro Value</div><div class="role-metric-val c-teal">~PKR 280M</div><div class="role-metric-sub">annual rebalance</div></div>
+      </div>
+      <div class="role-insight">Multi-currency Nostro managed as unified portfolio &mdash; <span class="c-teal">USD, GBP, EUR, AED rebalanced against FX volatility</span></div>
+    </div>
+
+    <div class="role-card">
+      <div class="role-header">
+        <div class="role-icon">&#128202;</div>
+        <div><div class="role-title">CFO / ALCO</div><div class="role-sub">Cash P&amp;L Waterfall</div></div>
+      </div>
+      <div style="background:var(--bg-card2);border-radius:6px;padding:14px;margin:8px 0">
+        <div style="display:flex;gap:4px;align-items:flex-end;height:60px;margin-bottom:8px">
+          <div style="width:18%;height:80%;background:var(--red);border-radius:3px"></div>
+          <div style="width:18%;height:50%;background:var(--green);border-radius:3px"></div>
+          <div style="width:18%;height:35%;background:var(--teal);border-radius:3px"></div>
+          <div style="width:18%;height:25%;background:var(--gold);border-radius:3px"></div>
+          <div style="width:18%;height:60%;background:var(--green);border-radius:3px"></div>
+        </div>
+        <div style="display:flex;justify-content:space-around;font:400 9px var(--font-data);color:var(--dim)">
+          <span>Idle</span><span>Vault</span><span>ATM</span><span>CRR</span><span>Left</span>
+        </div>
+      </div>
+      <p style="font:400 11px var(--font-ui);color:var(--muted);margin:6px 0">Value Realized = (Idle Cash Freed &times; KIBOR) &minus; Ops Cost</p>
+      <div style="display:flex;gap:12px;margin-top:8px">
+        <div style="flex:1;background:var(--bg-card2);border-radius:6px;padding:10px;text-align:center">
+          <div style="font:400 10px var(--font-data);color:var(--dim)">Net Impact</div>
+          <div style="font:700 16px var(--font-data);color:var(--gold)">~PKR 345M/yr</div>
+        </div>
+        <div style="flex:1;background:var(--bg-card2);border-radius:6px;padding:10px;text-align:center">
+          <div style="font:400 10px var(--font-data);color:var(--dim)">ROI</div>
+          <div style="font:700 16px var(--font-data);color:var(--teal)">4.2 months</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="role-card">
+      <div class="role-header">
+        <div class="role-icon">&#128666;</div>
+        <div><div class="role-title">Head of Operations</div><div class="role-sub">CIT, Denomination &amp; Digital Shift</div></div>
+      </div>
+      <div class="role-metrics">
+        <div class="role-metric"><div class="role-metric-label">CIT Savings</div><div class="role-metric-val c-green">~PKR 650M</div><div class="role-metric-sub">route optimization</div></div>
+        <div class="role-metric"><div class="role-metric-label">Denom Match</div><div class="role-metric-val c-teal">94%</div><div class="role-metric-sub">demand vs supply</div></div>
+        <div class="role-metric"><div class="role-metric-label">Digital Shift</div><div class="role-metric-val c-cyan">12%</div><div class="role-metric-sub">cash-to-digital</div></div>
+      </div>
+      <div class="role-insight">Armored vehicle routes optimized across network &mdash; <span class="c-teal">denomination orders matched to actual branch demand patterns</span></div>
+    </div>
+  </div>
+
+  <div class="ftr">
+    <div class="logo" style="transform:scale(0.65);transform-origin:left center">
+      <div class="logo-icon" style="font-size:11px">&#20116;&#22823;</div>
+      <div class="logo-text" style="font-size:17px">godai<span>tec</span></div>
+    </div>
+    <div class="ftr-links">
+      www.godai.tech &middot; <a href="mailto:info@godai.tech">info@godai.tech</a><br>
+      linkedin.com/company/godaitec-private-limited
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 6 — LIVE DEMO ═══════════════ -->
+<section class="sl" id="demo">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right">Live Demo &middot; Synthetic Data</div>
+  </div>
+
+  <div class="crumb">
+    <span class="crumb-tag">COE</span>
+    <span class="crumb-sep"></span>
+    <span class="crumb-label">Product Walkthrough</span>
+  </div>
+  <h2>The Engine in Action</h2>
+  <p class="subtitle" style="font-size:14px">What your team sees on day one. Every screen runs on synthetic data modeled at Tier-1 scale.</p>
+
+  <div class="demo-frame">
+    <div class="demo-frame-header">
+      <span class="demo-frame-title">Executive Strategy Summary</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font:400 11px var(--font-ui);color:var(--dim)">Aggregate savings across all 10 engines</span>
+        <span class="demo-badge">DEMO MODE</span>
+      </div>
+    </div>
+    <div class="demo-img">
+      <div style="text-align:center;padding:24px">
+        <div style="font:600 16px var(--font-ui);color:var(--muted);margin-bottom:16px">Executive Strategy Summary</div>
+        <div style="display:flex;gap:24px;justify-content:center;margin:20px 0">
+          <div style="text-align:center"><div style="font:700 28px var(--font-data);color:var(--gold)">44.6B</div><div style="font:400 10px var(--font-ui);color:var(--dim)">Total Savings</div></div>
+          <div style="text-align:center"><div style="font:700 28px var(--font-data);color:var(--teal)">10/10</div><div style="font:400 10px var(--font-ui);color:var(--dim)">Engines Active</div></div>
+          <div style="text-align:center"><div style="font:700 28px var(--font-data);color:var(--cyan)">UC-05</div><div style="font:400 10px var(--font-ui);color:var(--dim)">Top Contributor</div></div>
+          <div style="text-align:center"><div style="font:700 28px var(--font-data);color:var(--green)">5.24M%</div><div style="font:400 10px var(--font-ui);color:var(--dim)">Efficiency</div></div>
+        </div>
+        <div style="margin:16px auto;max-width:500px">
+          <div style="display:flex;gap:4px;align-items:flex-end;height:100px;margin-bottom:8px">
+            <div style="flex:1;height:90%;background:linear-gradient(180deg,var(--teal),#0d4f47);border-radius:3px"></div>
+            <div style="flex:1;height:70%;background:linear-gradient(180deg,var(--green),#0d3f1d);border-radius:3px"></div>
+            <div style="flex:1;height:55%;background:linear-gradient(180deg,var(--gold),#5a4520);border-radius:3px"></div>
+            <div style="flex:1;height:45%;background:linear-gradient(180deg,var(--cyan),#0d3f47);border-radius:3px"></div>
+            <div style="flex:1;height:35%;background:linear-gradient(180deg,var(--yellow),#4a3f08);border-radius:3px"></div>
+            <div style="flex:1;height:30%;background:linear-gradient(180deg,#a78bfa,#3d2f6b);border-radius:3px"></div>
+            <div style="flex:1;height:25%;background:linear-gradient(180deg,var(--red),#4a1010);border-radius:3px"></div>
+            <div style="flex:1;height:20%;background:linear-gradient(180deg,#f97316,#4a2810);border-radius:3px"></div>
+            <div style="flex:1;height:15%;background:linear-gradient(180deg,#ec4899,#4a1030);border-radius:3px"></div>
+            <div style="flex:1;height:10%;background:linear-gradient(180deg,var(--dim),#1a2538);border-radius:3px"></div>
+          </div>
+          <div style="font:400 9px var(--font-data);color:var(--dim);text-align:center">Savings by Engine (ranked)</div>
+        </div>
+      </div>
+    </div>
+    <div class="demo-callouts">
+      <div class="demo-callout"><div class="demo-callout-label c-red">KPI Strip</div></div>
+      <div class="demo-callout"><div class="demo-callout-label c-green">Savings by Engine</div></div>
+      <div class="demo-callout"><div class="demo-callout-label c-teal">Strategy Matrix</div></div>
+    </div>
+  </div>
+
+  <div class="ftr">
+    <div class="logo" style="transform:scale(0.65);transform-origin:left center">
+      <div class="logo-icon" style="font-size:11px">&#20116;&#22823;</div>
+      <div class="logo-text" style="font-size:17px">godai<span>tec</span></div>
+    </div>
+    <div class="ftr-links">
+      www.godai.tech &middot; <a href="mailto:info@godai.tech">info@godai.tech</a><br>
+      linkedin.com/company/godaitec-private-limited
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 7 — BAIW FRAMEWORK ═══════════════ -->
+<section class="sl" id="baiw">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right"></div>
+  </div>
+
+  <div class="section-label" style="text-align:center">Data Modeling Approach</div>
+  <h2 style="text-align:center;font-size:38px;margin-bottom:6px">BAIW<sup style="font-size:14px;color:var(--dim)">&trade;</sup> Framework</h2>
+  <p style="text-align:center;color:var(--muted);font-size:13px;max-width:740px;margin:0 auto 32px;line-height:1.6">
+    A ready-made banking data model with built-in business value use cases and enablement roadmap &mdash;
+    mapping GL, branch, ATM, treasury, CIT, customer, and market data into a single reconciliation-first
+    framework that plugs directly into existing bank data warehouses.
+    Available as an optional capability alongside COE.
+  </p>
+
+  <div class="grid-4" style="gap:24px;margin-bottom:28px">
+    <div class="baiw-card">
+      <div class="baiw-icon">&#127974;</div>
+      <div class="baiw-letter c-red">B &mdash; Bank-Anchored GL</div>
+      <div class="baiw-desc">Anchored to <strong style="color:var(--white)">all existing bank data</strong> &mdash; GL positions, branch attributes, ATM network topology, CIT schedules, treasury positions, nostro/vostro accounts. Your existing data warehouse is the foundation.</div>
+    </div>
+    <div class="baiw-card">
+      <div class="baiw-icon">&#128202;</div>
+      <div class="baiw-letter c-gold">A &mdash; Auditable Ratios</div>
+      <div class="baiw-desc">Data distributed using <strong style="color:var(--white)">real operational ratios</strong> across dimensions &mdash; deposit splits, cash-to-deposit, ATM utilization, CIT frequency, denomination demand. Every child row reconciles to its parent total.</div>
+    </div>
+    <div class="baiw-card">
+      <div class="baiw-icon">&#9878;</div>
+      <div class="baiw-letter c-teal">I &mdash; Instant DWH Integration</div>
+      <div class="baiw-desc">10 use cases mapped onto a <strong style="color:var(--white)">ready-made banking data model</strong> &mdash; branch dimensions, market rates, daily GL facts, transaction facts, ATM positions, CIT logs, treasury positions &mdash; compatible with standard bank DWH.</div>
+    </div>
+    <div class="baiw-card">
+      <div class="baiw-icon">&#128274;</div>
+      <div class="baiw-letter c-cyan">W &mdash; Walled &amp; Reconciled</div>
+      <div class="baiw-desc">Synthetic or live data stays <strong style="color:var(--white)">walled and reconciled</strong> &mdash; sum(child) = parent at every level, from transaction to daily GL to branch to bank-wide. Zero migration friction.</div>
+    </div>
+  </div>
+
+  <div class="compare-box">
+    <div class="compare-title">Why Banks Choose BAIW as an Accelerator</div>
+    <div class="compare-grid">
+      <div class="compare-col">
+        <h4><span class="c-red">&#10007;</span> Without a Ready Model</h4>
+        <p>Starting from scratch &mdash; months spent on data modeling, use case mapping, and building reconciliation logic before any optimization can begin.</p>
+      </div>
+      <div class="compare-col">
+        <h4><span class="c-green">&#10003;</span> With BAIW</h4>
+        <p>A ready data model with 10 banking use cases pre-mapped, reconciliation built in, and an enablement roadmap from day one. Transactions &rarr; daily GL &rarr; branch &rarr; bank-wide. Go live in weeks, not months.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="ftr">
+    <div class="logo" style="transform:scale(0.65);transform-origin:left center">
+      <div class="logo-icon" style="font-size:11px">&#20116;&#22823;</div>
+      <div class="logo-text" style="font-size:17px">godai<span>tec</span></div>
+    </div>
+    <div class="ftr-links">
+      www.godai.tech &middot; <a href="mailto:info@godai.tech">info@godai.tech</a><br>
+      linkedin.com/company/godaitec-private-limited
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 8 — ENGAGEMENT MODEL ═══════════════ -->
+<section class="sl" id="rapid">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right"></div>
+  </div>
+
+  <div class="section-label" style="text-align:center">Engagement Model</div>
+  <h2 style="text-align:center;font-size:38px;margin-bottom:6px">Rapid Consulting</h2>
+  <p style="text-align:center;color:var(--muted);font-size:14px;margin-bottom:36px">
+    A phased, risk-eliminating approach &mdash; see real results before committing to full deployment
+  </p>
+
+  <div class="timeline">
+    <div class="timeline-line"></div>
+    <div class="phase">
+      <div class="phase-circle">01</div>
+      <div class="phase-name c-gold">Discovery</div>
+      <div class="phase-weeks">Week 1&ndash;2</div>
+      <div class="phase-desc">GL extract review, network mapping, BAIW anchoring, scope agreement</div>
+      <div class="phase-badge green">Zero Risk</div>
+    </div>
+    <div class="phase">
+      <div class="phase-circle teal">02</div>
+      <div class="phase-name c-teal">Value Realization</div>
+      <div class="phase-weeks">Week 3&ndash;6</div>
+      <div class="phase-desc">Live deployment on 50&ndash;100 branches with your actual data &mdash; real idle cash reduction measured and validated against your GL</div>
+      <div class="engage-badge">Paid Engagement &middot; Actual Savings Measured</div>
+    </div>
+    <div class="phase">
+      <div class="phase-circle green">03</div>
+      <div class="phase-name c-green">Full Deployment</div>
+      <div class="phase-weeks">Week 7&ndash;20</div>
+      <div class="phase-desc">All 10 engines, full network, role dashboards, training, handover</div>
+      <div class="phase-badge teal">Commit After Proof</div>
+    </div>
+  </div>
+
+  <div class="benefit-grid">
+    <div class="benefit">
+      <div class="benefit-title">Risk Elimination</div>
+      <div class="benefit-desc">Never commit to full deployment without seeing actual measured results on your own data. If value isn't realized, you walk away &mdash; zero lock-in.</div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-title">Speed to Value</div>
+      <div class="benefit-desc">First actual savings measured within 4 weeks. Start from existing GL extracts and ATM logs &mdash; no new data infrastructure required.</div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-title">Data Sovereignty</div>
+      <div class="benefit-desc">100% on-premise from day one. Your data never leaves your network. GPU inference on your hardware.</div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-title">Progressive ROI</div>
+      <div class="benefit-desc">Phase 2 alone can free ~PKR 2&ndash;4B. Full 10-engine deployment multiplies that ~3&ndash;5x.</div>
+    </div>
+  </div>
+
+  <div class="cta-bar">
+    Ready to see the numbers on your data? <a href="mailto:info@godai.tech">Request a Demo &rarr; info@godai.tech</a>
+  </div>
+
+  <div class="ftr">
+    <div class="logo" style="transform:scale(0.65);transform-origin:left center">
+      <div class="logo-icon" style="font-size:11px">&#20116;&#22823;</div>
+      <div class="logo-text" style="font-size:17px">godai<span>tec</span></div>
+    </div>
+    <div class="ftr-links">
+      www.godai.tech &middot; <a href="mailto:info@godai.tech">info@godai.tech</a><br>
+      linkedin.com/company/godaitec-private-limited
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SLIDE 9 — DISCLAIMER ═══════════════ -->
+<section class="sl" id="legal">
+  <div class="watermark">CONFIDENTIAL</div>
+  <div class="hdr">
+    <div class="logo">
+      <div class="logo-icon">&#20116;&#22823;</div>
+      <div class="logo-text">godai<span>tec</span></div>
+    </div>
+    <div class="hdr-right"></div>
+  </div>
+
+  <div class="disclaimer" style="margin-top:60px">
+    <h3>DISCLAIMER &amp; CONFIDENTIALITY NOTICE</h3>
+
+    <p>This document is the proprietary and confidential property of Godaitec (godai.tech). All figures, projections, and modeled outcomes presented herein are derived from <strong>synthetic data generated at Tier-1 commercial bank scale</strong> (1,500+ branches, 2,000+ ATMs) and do not represent the financial data, performance, or operations of any specific banking institution.</p>
+
+    <p>Projected annual impact figures (PKR 7.8&ndash;12.7 Billion) are modeled estimates based on industry benchmarks, publicly available regulatory parameters, and standard banking operational assumptions. Actual results will vary based on institution-specific data, operational maturity, and implementation scope.</p>
+
+    <p>The optimization methodologies referenced employ proprietary advanced computational techniques. No algorithmic specifications, model architectures, or implementation details are disclosed in this material.</p>
+
+    <p>This document is intended solely for evaluation purposes by authorized recipients. Unauthorized reproduction, distribution, or disclosure is strictly prohibited.</p>
+
+    <div class="copy">
+      <strong>&copy; 2026 Godaitec &mdash; All Rights Reserved</strong><br>
+      <a href="https://www.godai.tech">www.godai.tech</a> &middot;
+      <a href="mailto:info@godai.tech">info@godai.tech</a> &middot;
+      <a href="https://linkedin.com/company/godaitec-private-limited">LinkedIn</a>
+    </div>
+  </div>
+
+  <p style="text-align:center;font:400 11px var(--font-ui);color:var(--dim);margin-top:40px">
+    Screenshot any slide for LinkedIn, decks, or sales materials &middot; All data is synthetic, modeled at Tier-1 commercial bank scale
+  </p>
+</section>
+
+</div><!-- .vp -->
+
+<!-- ═══════════════ SCRIPT ═══════════════ -->
+<script>
+const slides = document.querySelectorAll('.sl');
+const btns = document.querySelectorAll('.nv button');
+
+function go(i) {
+  slides.forEach(s => s.classList.remove('active'));
+  btns.forEach(b => b.classList.remove('active'));
+  slides[i].classList.add('active');
+  btns[i].classList.add('active');
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  const current = [...slides].findIndex(s => s.classList.contains('active'));
+  if (e.key === 'ArrowRight' && current < slides.length - 1) go(current + 1);
+  if (e.key === 'ArrowLeft' && current > 0) go(current - 1);
+});
+
+// Basic copy protection
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('copy', e => {
+  e.clipboardData.setData('text/plain',
+    'Content from Godaitec Confidential Material — Unauthorized reproduction prohibited. © 2026 Godaitec');
+  e.preventDefault();
+});
+</script>
+
+</body>
+</html>

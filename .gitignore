@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+
+# Secrets & env
+.env
+.env.local
+.env.*.local
+
+# Databases (generated, large)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# OS / editor junk
+.DS_Store
+*Zone.Identifier
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Root-level large binaries (keep subdir data tracked)
+/*.xlsx
+/*.html
+
+# Build artifacts
+build/
+dist/
+*.egg
