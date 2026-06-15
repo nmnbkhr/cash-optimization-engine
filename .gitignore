@@ -1,51 +1,43 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-env/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Node
-node_modules/
-frontend/dist/
-frontend/.vite/
-npm-debug.log*
-
-# Secrets & env
+# ---- Secrets ----
 .env
-.env.local
-.env.*.local
+.env.*
+*.key
+*.pem
+secrets/
 
-# Databases (generated, large)
+# ---- Databases / data (the GB problem) ----
 *.db
-*.db-journal
-*.db-wal
-*.db-shm
+*.db.*
 *.sqlite
 *.sqlite3
+*.parquet
+*.csv
+*.tsv
+*.xlsx
+data/
 
-# OS / editor junk
-.DS_Store
-*Zone.Identifier
-.vscode/
-.idea/
-*.swp
+# ---- Model artifacts ----
+models/
+*.pt
+*.pth
+*.pkl
+*.joblib
+checkpoints/
 
-# Logs
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
 *.log
 
-# Root-level large binaries (keep subdir data tracked)
-/*.xlsx
-/*.html
-
-# Build artifacts
-build/
+# ---- Frontend ----
+node_modules/
 dist/
-*.egg
+.vite/
+
+# ---- OS / editor ----
+.DS_Store
+.idea/
+*.code-workspace
