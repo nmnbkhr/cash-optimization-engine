@@ -52,6 +52,5 @@ async def get_ai_summary(request: AISummaryRequest):
 
 @router.get("/ai-summary/status")
 async def ai_status():
-    from app.core.ai_client import get_client
-    available = get_client() is not None
-    return {"available": available}
+    from app.core.ai_client import get_status
+    return get_status()

@@ -14,8 +14,13 @@ class Settings:
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./cash_engine.db")
 
-    # OpenAI (optional — only for "Ask AI" button)
+    # LLM backend for "Ask AI" button.
+    # Priority: Ollama (local, free, offline) → OpenAI (if key set) → graceful fallback.
+    LLM_BACKEND: str = os.getenv("LLM_BACKEND", "auto")  # auto | ollama | openai | off
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4.1")
 
     # SBP Regulatory
     SBP_POLICY_RATE: float = float(os.getenv("SBP_POLICY_RATE", "0.11"))
