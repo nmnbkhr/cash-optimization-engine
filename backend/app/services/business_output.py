@@ -579,28 +579,56 @@ class CashOptimizationEngine:
     # ══════════════════════════════════════════════════════════
 
     def crr_deployment(self) -> dict:
-        latest = self.db.query(CRRPosition).order_by(CRRPosition.date.desc()).first()
-        if not latest:
-            return {"error": "No CRR data found"}
+        from datetime import datetime
 
-        deposit_base = M(latest.deposit_base)
+        # Reconciled spine: network CRR is the sum of per-branch crr_held/crr_required in
+        # fact_gl_daily. Deposit base is implied by required/crr_rate. Fallback to the legacy
+        # (and now stale) crr_positions table only if the ledger is empty.
+        series = self.db.execute(
+            text(
+                "SELECT date, SUM(crr_held_m) held, SUM(crr_required_m) req "
+                "FROM fact_gl_daily GROUP BY date ORDER BY date DESC LIMIT 7"
+            )
+        ).fetchall()
+
+        if series:
+            data_source = "reconciled"
+            as_of = series[0].date
+            latest_dt = datetime.strptime(as_of, "%Y-%m-%d").date()
+            required_latest = float(series[0].req or 0.0)
+            deposit_base = required_latest / self.crr_rate if self.crr_rate else 0.0
+            dow = latest_dt.weekday()                 # Mon=0...Sun=6
+            days_elapsed = ((dow - 4) % 7) + 1        # Fri=1
+            recent_days = series[:days_elapsed]
+            cumulative_held = sum(float(r.held or 0.0) for r in recent_days)
+            week_income = sum(
+                max(0.0, float(r.held or 0.0) - float(r.req or 0.0)) * (self.kibor / 365)
+                for r in recent_days
+            )
+        else:
+            latest = self.db.query(CRRPosition).order_by(CRRPosition.date.desc()).first()
+            if not latest:
+                return {"error": "No CRR data found"}
+            data_source = "snapshot"
+            as_of = str(latest.date)
+            deposit_base = M(latest.deposit_base)
+            dow = latest.date.weekday()
+            days_elapsed = ((dow - 4) % 7) + 1
+            recent = (
+                self.db.query(CRRPosition)
+                .order_by(CRRPosition.date.desc())
+                .limit(days_elapsed)
+                .all()
+            )
+            cumulative_held = sum(M(p.actual_crr) for p in recent)
+            week_income = sum(
+                max(0, M(p.freed_liquidity)) * (self.kibor / 365) for p in recent
+            )
+
         required_weekly_avg = deposit_base * self.crr_rate
         daily_minimum = deposit_base * self.crr_daily_min
-
-        # Figure out position in maintenance week (Fri=1, Thu=7)
-        dow = latest.date.weekday()  # Mon=0...Sun=6
-        days_elapsed = ((dow - 4) % 7) + 1  # Fri=1
         days_remaining = 7 - days_elapsed
 
-        # Pull recent CRR positions for this maintenance period
-        recent = (
-            self.db.query(CRRPosition)
-            .order_by(CRRPosition.date.desc())
-            .limit(days_elapsed)
-            .all()
-        )
-
-        cumulative_held = sum(M(p.actual_crr) for p in recent)
         required_total = required_weekly_avg * 7
         remaining_needed = required_total - cumulative_held
 
@@ -614,15 +642,12 @@ class CashOptimizationEngine:
         free = max(0, deposit_base * self.crr_rate - today_hold + buffer)
         daily_income = free * (self.kibor / 365)
 
-        week_income = sum(
-            max(0, M(p.freed_liquidity)) * (self.kibor / 365)
-            for p in recent
-        )
-
         avg_so_far = cumulative_held / max(days_elapsed, 1)
         compliance = "ON_TRACK" if avg_so_far >= required_weekly_avg * 0.95 else "MONITOR"
 
         return {
+            "date": as_of,
+            "data_source": data_source,
             "maintenance_period": {
                 "day_number": days_elapsed,
                 "days_remaining": days_remaining,
