@@ -50,6 +50,15 @@ def M(val):
     return val / 1e6
 
 
+# Forecast-driven (s,S) safety-stock policy knobs (see vault_recommendation).
+# The classic newsvendor / base-stock result: hold enough to meet expected demand over
+# the replenishment lead time plus a safety buffer sized by demand uncertainty × a
+# service-level z-score. Replaces the flat "avg × 1.65" heuristic when a forecast exists.
+FORECAST_COVERAGE_DAYS = 2.0     # days the vault must self-serve between CIT replenishments
+FORECAST_SERVICE_Z = 1.645       # 95% service level (z-score) for the safety buffer
+FORECAST_BAND_Z = 1.645          # z implied by the stored 95% conformal band half-width
+
+
 class CashOptimizationEngine:
     """The prescriptive core. Each method returns an ACTION, not a report."""
 
@@ -240,6 +249,78 @@ class CashOptimizationEngine:
         optimal = min(max(avg_wd_m * 1.65, sbp_minimum), insurance_limit)
         return optimal, sbp_minimum, insurance_limit
 
+    def _forecast_driven_optimal(self, branch_id: str, sbp_minimum: float,
+                                 insurance_limit: float, cit_threshold: float,
+                                 current: float, heuristic_optimal: float) -> dict:
+        """Newsvendor / base-stock target from the branch's promoted WITHDRAWAL forecast.
+
+        optimal = μ·L + z·σ·√L, where μ/σ are the forecast's mean & uncertainty over the
+        first L=coverage days, z is the service-level score. Values in the forecasts table
+        are already PKR M. Returns {available: False, ...} when no forecast has been promoted
+        (Forecast Lab → Promote), so the caller can show the heuristic alone."""
+        rows = (
+            self.db.query(Forecast)
+            .filter(Forecast.entity_type == "branch_withdrawals",
+                    Forecast.entity_id == branch_id)
+            .order_by(Forecast.forecast_date.desc(), Forecast.target_date.asc())
+            .all()
+        )
+        if not rows:
+            return {"available": False,
+                    "note": "No promoted withdrawal forecast. Use Forecast Lab → Promote to enable."}
+        latest_origin = rows[0].forecast_date
+        horizon_rows = [r for r in rows if r.forecast_date == latest_origin][: int(FORECAST_COVERAGE_DAYS) or 1]
+        if not horizon_rows:
+            return {"available": False, "note": "Forecast present but no horizon rows."}
+
+        mu = sum(float(r.predicted_value or 0.0) for r in horizon_rows) / len(horizon_rows)
+        sigmas = [max(0.0, (float(r.confidence_upper or 0.0) - float(r.confidence_lower or 0.0)))
+                  / (2 * FORECAST_BAND_Z) for r in horizon_rows]
+        sigma = sum(sigmas) / len(sigmas) if sigmas else 0.0
+
+        L = FORECAST_COVERAGE_DAYS
+        base = mu * L
+        safety = FORECAST_SERVICE_Z * sigma * math.sqrt(L)
+        optimal_f = min(max(base + safety, sbp_minimum), insurance_limit)
+        binding = ("insurance" if optimal_f >= insurance_limit - 1e-6 else
+                   "sbp_minimum" if optimal_f <= sbp_minimum + 1e-6 else "forecast")
+
+        delta_f = round(current - optimal_f, 2)
+        if delta_f > cit_threshold:
+            action_f = "RELEASE"
+        elif delta_f < -cit_threshold:
+            action_f = "REQUEST"
+        else:
+            action_f = "HOLD"
+
+        return {
+            "available": True,
+            "model": rows[0].model_version,
+            "forecast_date": str(latest_origin),
+            "mape": rows[0].mape,
+            "policy": {
+                "type": "base-stock (s,S) newsvendor",
+                "coverage_days": L,
+                "service_level_pct": round(0.5 * (1 + math.erf(FORECAST_SERVICE_Z / math.sqrt(2))) * 100, 0),
+                "formula": "optimal = μ·L + z·σ·√L, bounded by [SBP min, insurance limit]",
+            },
+            "predicted_daily_demand": round(mu, 2),
+            "demand_sigma": round(sigma, 2),
+            "base_level": round(base, 1),
+            "safety_stock": round(safety, 1),
+            "recommended_vault": round(optimal_f, 1),
+            "binding_constraint": binding,
+            "action": action_f,
+            "action_amount": round(abs(delta_f), 1),
+            "vs_heuristic_m": round(optimal_f - heuristic_optimal, 1),
+            "narrative": (
+                f"Forecast-driven target PKR {optimal_f:.1f}M = demand {mu:.1f}M/day × {L:.0f}d "
+                f"+ {FORECAST_SERVICE_Z:.2f}σ safety ({sigma:.1f}M). "
+                f"Heuristic (avg×1.65) says PKR {heuristic_optimal:.1f}M — "
+                f"a PKR {optimal_f - heuristic_optimal:+.1f}M difference."
+            ),
+        }
+
     def _branch_states(self, city: str = None):
         """Unified per-branch state on the reconciled spine for the network-scanning UCs.
 
@@ -400,6 +481,13 @@ class CashOptimizationEngine:
                 "savings_potential_annual": round(annual_loss, 2),
             },
         }
+
+        # Forecast-driven optimization (base-stock / newsvendor) shown ALONGSIDE the live
+        # heuristic decision, so the desk can compare before the bank switches the policy.
+        # Populated once a withdrawal forecast is promoted from the Forecast Lab.
+        rec["forecast_optimization"] = self._forecast_driven_optimal(
+            branch_id, sbp_minimum, insurance_limit, cit_threshold, current, optimal
+        )
 
         # Constitution gate: critique the CURRENT vault state (a branch already over its
         # insured limit or below operational minimum is a real, flaggable breach). HARD

@@ -145,9 +145,11 @@ class ForecastLab:
         return self._ORIGIN_FEATS + ["h"] + _CAL_FEATS
 
     def _fit_forecast_xgb(self, df: pd.DataFrame, origin: int, horizon: int,
-                          params: dict, level: float):
+                          params: dict, level: float, target_cal: np.ndarray | None = None):
         """Train direct multi-horizon XGB on rows with origin index <= `origin`, then
-        forecast h=1..H from `origin`. Returns (preds, lower, upper, importances)."""
+        forecast h=1..H from `origin`. When `target_cal` (H×len(_CAL_FEATS)) is given it
+        supplies the target-date calendar for the forecast step — needed to forecast dates
+        beyond the loaded series (promotion). Returns (preds, lower, upper, importances)."""
         import xgboost as xgb
 
         y = df["y"].values
@@ -214,7 +216,10 @@ class ForecastLab:
             tgt = origin + h
             feat = dict(orow); feat["h"] = h
             for j, c in enumerate(_CAL_FEATS):
-                feat[c] = float(cal[tgt, j]) if tgt < len(cal) else 0.0
+                if target_cal is not None:
+                    feat[c] = float(target_cal[h - 1, j])
+                else:
+                    feat[c] = float(cal[tgt, j]) if tgt < len(cal) else 0.0
             p = float(model.predict(np.asarray([[feat[c] for c in feat_cols]], float))[0])
             preds.append(p); lower.append(p - q[h]); upper.append(p + q[h])
 
@@ -378,6 +383,90 @@ class ForecastLab:
                 "calendar_features": _CAL_FEATS,
                 "note": "XGBoost uses these; SARIMA/Prophet are univariate on y with built-in seasonality.",
             },
+        }
+
+    # ── promotion (Lab → production forecasts table) ────────────────────────────
+    def _future_calendar(self, as_of: str, horizon: int):
+        """(dates, cal_array) for the `horizon` calendar days AFTER as_of, from dim_calendar."""
+        con = self._get_con()
+        try:
+            cal = pd.read_sql_query(
+                "SELECT * FROM dim_calendar WHERE date > ? ORDER BY date LIMIT ?",
+                con, params=(as_of, horizon),
+            )
+        finally:
+            con.close()
+        for c in _CAL_FEATS:
+            if c not in cal.columns:
+                cal[c] = 0
+        cal[_CAL_FEATS] = cal[_CAL_FEATS].fillna(0)
+        return cal["date"].tolist(), cal[_CAL_FEATS].values.astype(float)
+
+    def promote(self, branch_id: str, target: str = "withdrawal", horizon: int = 7,
+                model: str = "xgboost", params: dict = None, mape: float = None) -> dict:
+        """Train the chosen model on full history and WRITE its forward forecast into the
+        `forecasts` table (entity_type=branch_<target>s), so business_output's forecast-driven
+        optimizer consumes it. This is the Lab→production link. Replaces any prior promoted
+        rows for this branch+entity. All amounts PKR M (table convention)."""
+        if target not in TARGETS:
+            return {"error": f"target must be one of {list(TARGETS)}"}
+        if model not in MODEL_KEYS:
+            return {"error": f"model must be one of {list(MODEL_KEYS)}"}
+        horizon = max(1, min(int(horizon), 14))
+        resolved = {**DEFAULT_PARAMS.get(model, {}), **(params or {})}
+
+        df = self._load(branch_id, target)
+        if df.empty or len(df) < 60:
+            return {"error": f"Branch {branch_id} has insufficient history"}
+        as_of = self._as_of()
+        fut_dates, fut_cal = self._future_calendar(as_of, horizon)
+        if not fut_dates:
+            return {"error": "no future calendar dates available"}
+        h = len(fut_dates)
+        origin = len(df) - 1
+
+        try:
+            if model == "xgboost":
+                preds, lo, hi, _ = self._fit_forecast_xgb(df, origin, h, resolved, 0.90, target_cal=fut_cal)
+            elif model == "sarima":
+                preds, lo, hi, _ = self._fit_forecast_sarima(df, origin, h, resolved, 0.90)
+            else:
+                preds, lo, hi, _ = self._fit_forecast_prophet(df, origin, h, resolved, 0.90)
+        except Exception as e:
+            logger.exception("promote %s failed", model)
+            return {"error": f"{type(e).__name__}: {e}"}
+
+        entity_type = f"branch_{target}s"          # branch_withdrawals | branch_deposits
+        model_version = f"forecast_lab:{model}"
+        con = self._get_con()
+        try:
+            con.execute(
+                "DELETE FROM forecasts WHERE entity_type=? AND entity_id=? AND model_version LIKE 'forecast_lab:%'",
+                (entity_type, branch_id),
+            )
+            for i, d in enumerate(fut_dates):
+                con.execute(
+                    "INSERT INTO forecasts (entity_type, entity_id, forecast_date, target_date, "
+                    "predicted_value, confidence_lower, confidence_upper, mape, model_version, created_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (entity_type, branch_id, as_of, d,
+                     float(preds[i]), float(lo[i]), float(hi[i]),
+                     float(mape) if mape is not None else None, model_version, as_of),
+                )
+            con.commit()
+        finally:
+            con.close()
+
+        return {
+            "promoted": True, "branch_id": branch_id, "target": target,
+            "entity_type": entity_type, "model": model, "model_version": model_version,
+            "as_of": as_of, "horizon": h, "rows_written": h,
+            "forecast": [
+                {"target_date": fut_dates[i], "yhat": round(float(preds[i]), 2),
+                 "lower": round(float(lo[i]), 2), "upper": round(float(hi[i]), 2)}
+                for i in range(h)
+            ],
+            "note": f"Live: {entity_type} forecast now drives the vault base-stock target for {branch_id}.",
         }
 
     def defaults(self) -> dict:
