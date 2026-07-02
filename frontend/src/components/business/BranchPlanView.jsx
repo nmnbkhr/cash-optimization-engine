@@ -803,6 +803,54 @@ export default function BranchPlanView() {
             </SectionCard>
           </div>
 
+          {/* ---- Forecast-Driven Target vs Heuristic (base-stock policy comparison) ---- */}
+          {vault.forecast_optimization && (() => {
+            const fo = vault.forecast_optimization
+            const heurTarget = vault.decision?.recommended_vault
+            if (!fo.available) {
+              return (
+                <SectionCard title="Forecast-Driven Target" style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 1.6 }}>
+                    Live target uses the historical-average heuristic (avg × 1.65).
+                    <br />{fo.note || 'Promote a withdrawal forecast in Forecast Lab to enable the base-stock optimizer.'}
+                  </div>
+                </SectionCard>
+              )
+            }
+            const diff = fo.vs_heuristic_m
+            const diffColor = diff > 0 ? theme.orange : diff < 0 ? theme.green : theme.textSecondary
+            return (
+              <SectionCard title="Forecast-Driven Target vs Heuristic" style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                  {/* Heuristic (live) */}
+                  <div style={{ flex: '1 1 220px', backgroundColor: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 8, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 10, color: theme.textSecondary, fontFamily: theme.mono, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Heuristic (LIVE)</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: theme.text, fontFamily: theme.mono, marginTop: 4 }}>{fmt(heurTarget)}</div>
+                    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>avg daily withdrawal × 1.65</div>
+                    <div style={{ fontSize: 12, color: theme.text, marginTop: 6 }}>{vault.decision?.action} {fmt(vault.decision?.action_amount)}</div>
+                  </div>
+                  {/* Forecast-driven */}
+                  <div style={{ flex: '1 1 220px', backgroundColor: theme.bg, border: `1px solid ${theme.gold}55`, borderRadius: 8, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 10, color: theme.gold, fontFamily: theme.mono, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Forecast-Driven ({fo.model?.replace('forecast_lab:', '') || 'model'})</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: theme.gold, fontFamily: theme.mono, marginTop: 4 }}>{fmt(fo.recommended_vault)}</div>
+                    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>base {fmt(fo.base_level)} + safety {fmt(fo.safety_stock)}</div>
+                    <div style={{ fontSize: 12, color: theme.text, marginTop: 6 }}>{fo.action} {fmt(fo.action_amount)}</div>
+                  </div>
+                  {/* Delta + policy */}
+                  <div style={{ flex: '1 1 220px', backgroundColor: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 8, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 10, color: theme.textSecondary, fontFamily: theme.mono, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Difference</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: diffColor, fontFamily: theme.mono, marginTop: 4 }}>{diff > 0 ? '+' : ''}{fmt(diff)}</div>
+                    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>{fo.policy?.type}</div>
+                    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>service {fo.policy?.service_level_pct}% · {fo.policy?.coverage_days}d cover{fo.mape != null ? ` · MAPE ${fo.mape}%` : ''}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 12, lineHeight: 1.6, fontStyle: 'italic' }}>
+                  {fo.narrative} The live recommendation still uses the heuristic — promote/switch policy from Forecast Lab.
+                </div>
+              </SectionCard>
+            )
+          })()}
+
           {/* ---- Denomination Plan (full width) ---- */}
           <SectionCard title="Denomination Plan" style={{ marginBottom: 20 }}>
             {/* Stacked horizontal bar */}

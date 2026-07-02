@@ -55,6 +55,8 @@ export default function ForecastLab() {
   const [result, setResult] = useState(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState(null)
+  const [promoting, setPromoting] = useState(false)
+  const [promoted, setPromoted] = useState(null)
 
   useEffect(() => {
     axios.get(`${API}/api/forecast-lab/config`).then((r) => {
@@ -82,6 +84,19 @@ export default function ForecastLab() {
       })
       .catch((e) => setError(e.response?.data?.detail || e.message))
       .finally(() => setRunning(false))
+  }
+
+  const promote = () => {
+    if (!result?.best_model) return
+    const best = result.best_model
+    setPromoting(true); setPromoted(null)
+    axios.post(`${API}/api/forecast-lab/promote`, {
+      branch_id: branch, target, horizon, model: best,
+      params: params?.[best], mape: result.models[best]?.metrics?.mape,
+    })
+      .then((r) => setPromoted(r.data.error ? { error: r.data.error } : r.data))
+      .catch((e) => setPromoted({ error: e.response?.data?.detail || e.message }))
+      .finally(() => setPromoting(false))
   }
 
   const okModels = result ? Object.entries(result.models).filter(([, m]) => m.status === 'ok') : []
@@ -224,7 +239,27 @@ export default function ForecastLab() {
       {result && (
         <>
           {/* ── Leaderboard ── */}
-          <Section title="Model Comparison" subtitle={`Rolling-origin backtest · ${result.meta.origins} origins · target = ${result.meta.target} flow (PKR M)`}>
+          <Section
+            title="Model Comparison"
+            subtitle={`Rolling-origin backtest · ${result.meta.origins} origins · target = ${result.meta.target} flow (PKR M)`}
+            right={result.best_model && (
+              <button onClick={promote} disabled={promoting}
+                title="Write this model's forward forecast to production — it will drive the vault base-stock target"
+                style={{ backgroundColor: promoting ? theme.border : theme.green, color: promoting ? theme.textSecondary : '#0a0e17', border: 'none', borderRadius: 6, padding: '7px 14px', fontSize: 11, fontWeight: 700, fontFamily: theme.mono, cursor: promoting ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+                {promoting ? 'Promoting…' : `▲ Promote ${MODEL_LABELS[result.best_model]} to production`}
+              </button>
+            )}
+          >
+            {promoted && (
+              <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 6, fontSize: 12,
+                backgroundColor: promoted.error ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                border: `1px solid ${promoted.error ? theme.red : theme.green}55`,
+                color: promoted.error ? theme.red : theme.green, fontFamily: theme.mono }}>
+                {promoted.error
+                  ? `Promotion failed: ${promoted.error}`
+                  : `✓ ${promoted.model_version} promoted for ${promoted.branch_id} — ${promoted.rows_written} days written. ${promoted.note}`}
+              </div>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
               {Object.entries(result.models).map(([key, m]) => {
                 const isBest = key === result.best_model
