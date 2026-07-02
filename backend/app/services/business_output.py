@@ -13,10 +13,13 @@ SBP Regulatory Context:
 - KIBOR overnight: ~10.50% (benchmark for opportunity cost)
 """
 
+import logging
 import math
 from datetime import date
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
+
+logger = logging.getLogger(__name__)
 
 from app.core.cash_constitution import CONSTITUTION
 
@@ -260,26 +263,29 @@ class CashOptimizationEngine:
         out = {}
         try:
             rows = self.db.execute(
-                text("SELECT entity_id, forecast_date, predicted_value, confidence_lower, "
-                     "       confidence_upper, mape, model_version "
+                text("SELECT entity_id, forecast_date, target_date, predicted_value, "
+                     "       confidence_lower, confidence_upper, mape, model_version, created_at "
                      "FROM forecasts WHERE entity_type='branch_withdrawals' "
-                     "ORDER BY entity_id, forecast_date DESC, target_date ASC")
+                     "ORDER BY entity_id, created_at DESC, target_date ASC")
             ).fetchall()
             ncov = int(FORECAST_COVERAGE_DAYS) or 1
             grouped: dict = {}
             for r in rows:
                 grouped.setdefault(r.entity_id, []).append(r)
             for bid, rs in grouped.items():
-                latest = rs[0].forecast_date
-                hrows = [r for r in rs if r.forecast_date == latest][:ncov]
+                # Newest promotion wins: take the rows from the most recent created_at batch
+                # (per-branch Promote made after a network Promote overrides it, and vice versa).
+                newest = rs[0].created_at
+                hrows = [r for r in rs if r.created_at == newest][:ncov]
                 if not hrows:
                     continue
                 mu = sum(float(r.predicted_value or 0.0) for r in hrows) / len(hrows)
                 sig = sum(max(0.0, (float(r.confidence_upper or 0.0) - float(r.confidence_lower or 0.0)))
                           / (2 * FORECAST_BAND_Z) for r in hrows) / len(hrows)
                 out[bid] = {"mu": mu, "sigma": sig, "model": hrows[0].model_version,
-                            "mape": hrows[0].mape, "forecast_date": str(latest)}
+                            "mape": hrows[0].mape, "forecast_date": str(hrows[0].forecast_date)}
         except Exception:
+            logger.exception("_promoted_forecast_map failed")
             out = {}
         self._PROMO_CACHE = out
         return out
@@ -1348,6 +1354,7 @@ class CashOptimizationEngine:
                 "total_idle_cash": round(total_idle, 0),
                 "data_source": snapshot_source,
                 "as_of": as_of,
+                "forecast_driven_branches": len(self._promoted_forecast_map()),
             },
             "optimization_impact": {
                 "monthly_value_realized": pnl["net_value_realized"]["monthly"],

@@ -53,3 +53,15 @@ async def promote(req: PromoteRequest):
         branch_id=req.branch_id, target=req.target, horizon=req.horizon,
         model=req.model, params=req.params, mape=req.mape,
     )
+
+
+class PromoteAllRequest(BaseModel):
+    target: str = "withdrawal"
+    model: str = "xgboost"             # network promotion is xgboost-only (ensemble)
+
+
+@router.post("/promote-all")
+async def promote_all(req: PromoteAllRequest):
+    """Network-wide promotion: train the ensemble XGBoost and write forecasts for ALL
+    branches, making the base-stock optimizer forecast-driven across the whole network."""
+    return get_lab().promote_all(target=req.target, model=req.model)

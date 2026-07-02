@@ -81,7 +81,9 @@ class ForecastLab:
         self._con = None
 
     def _get_con(self):
-        return sqlite3.connect(DB_PATH)
+        # busy timeout: promotion writes run alongside the live API's readers; SQLite allows
+        # a single writer, so wait for the lock instead of failing immediately (default 0ms).
+        return sqlite3.connect(DB_PATH, timeout=30)
 
     def _as_of(self) -> str | None:
         con = self._get_con()
@@ -436,8 +438,10 @@ class ForecastLab:
             logger.exception("promote %s failed", model)
             return {"error": f"{type(e).__name__}: {e}"}
 
+        from datetime import datetime
         entity_type = f"branch_{target}s"          # branch_withdrawals | branch_deposits
         model_version = f"forecast_lab:{model}"
+        created = datetime.now().isoformat()        # real timestamp → newest promotion wins
         con = self._get_con()
         try:
             con.execute(
@@ -451,7 +455,7 @@ class ForecastLab:
                     "VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (entity_type, branch_id, as_of, d,
                      float(preds[i]), float(lo[i]), float(hi[i]),
-                     float(mape) if mape is not None else None, model_version, as_of),
+                     float(mape) if mape is not None else None, model_version, created),
                 )
             con.commit()
         finally:
@@ -467,6 +471,93 @@ class ForecastLab:
                 for i in range(h)
             ],
             "note": f"Live: {entity_type} forecast now drives the vault base-stock target for {branch_id}.",
+        }
+
+    def promote_all(self, target: str = "withdrawal", model: str = "xgboost") -> dict:
+        """Network-wide promotion. Delegates to the ensemble XGBoost+conformal forecaster
+        (one global model, all branches, fast) which writes branch_deposits/branch_withdrawals
+        to the forecasts table — consumed by the base-stock optimizer for EVERY branch.
+
+        Only XGBoost is supported network-wide (SARIMA/Prophet are per-branch via promote()),
+        matching the cost profile: one global fit vs 1,532 univariate fits."""
+        if model != "xgboost":
+            return {"error": "Network promotion supports 'xgboost' only. "
+                             "Use per-branch Promote for SARIMA/Prophet (they refit per series)."}
+        if target not in TARGETS:
+            return {"error": f"target must be one of {list(TARGETS)}"}
+        from datetime import datetime
+        try:
+            import numpy as _np
+            from app.services.ensemble_forecast import get_forecast_service
+            svc = get_forecast_service()
+            if not getattr(svc, "is_trained", False):
+                tr = svc.train()
+                if isinstance(tr, dict) and tr.get("status") != "trained":
+                    return {"error": f"ensemble training failed: {tr.get('message')}"}
+
+            # Load + engineer ONCE (the ensemble's own predict_all reloaded the 2.24M-row
+            # ledger per branch — O(branches × dataset). Here we engineer once and predict
+            # every branch's latest feature row in a single vectorized conformal call.)
+            df = svc._engineer_features(svc._load_data())
+            last_rows = df.sort_values("date").groupby("branch_id").tail(1)
+            bids = last_rows["branch_id"].tolist()
+            X = last_rows[svc._feature_cols].values.astype(float)
+
+            cmodel = svc.withdrawal_conformal if target == "withdrawal" else svc.deposit_conformal
+            res = cmodel.predict(X)
+            if isinstance(res, tuple) and len(res) == 2:
+                y_pred, intervals = res
+                y_pred = _np.asarray(y_pred, float).ravel()
+                intervals = _np.asarray(intervals, float)
+            else:
+                y_pred = _np.asarray(res, float).ravel()
+                intervals = None
+            mape = (svc.metrics or {}).get(f"mape_{target}s")
+
+            as_of = self._as_of()
+            fut_dates, _ = self._future_calendar(as_of, 7)
+            created = datetime.now().isoformat()
+            entity_type = f"branch_{target}s"
+            mv = "forecast_lab:network-xgb"
+
+            rows = []
+            for i, bid in enumerate(bids):
+                point = float(y_pred[i])
+                if intervals is not None and intervals.ndim == 3:
+                    lo, hi = float(intervals[i, 0, 0]), float(intervals[i, 1, 0])
+                else:
+                    lo, hi = point * 0.8, point * 1.2
+                for d in fut_dates:
+                    rows.append((entity_type, bid, as_of, d, point, lo, hi,
+                                 float(mape) if mape is not None else None, mv, created))
+
+            con = self._get_con()
+            try:
+                con.execute("DELETE FROM forecasts WHERE entity_type=? AND model_version=?",
+                            (entity_type, mv))
+                con.executemany(
+                    "INSERT INTO forecasts (entity_type, entity_id, forecast_date, target_date, "
+                    "predicted_value, confidence_lower, confidence_upper, mape, model_version, created_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)", rows,
+                )
+                con.commit()
+            finally:
+                con.close()
+        except Exception as e:
+            logger.exception("promote_all failed")
+            return {"error": f"{type(e).__name__}: {e}"}
+
+        return {
+            "promoted_all": True,
+            "model": "forecast_lab:network-xgb (ensemble global XGBoost + conformal)",
+            "target": target,
+            "branches": len(bids),
+            "rows_written": len(rows),
+            "mape": mape,
+            "as_of": as_of,
+            "note": "All branches now carry a withdrawal forecast; the base-stock optimizer is "
+                    "forecast-driven network-wide. Per-branch Promote overrides a specific "
+                    "branch (most recent promotion wins).",
         }
 
     def defaults(self) -> dict:

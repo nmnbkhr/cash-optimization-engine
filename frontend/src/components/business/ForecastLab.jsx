@@ -57,6 +57,8 @@ export default function ForecastLab() {
   const [error, setError] = useState(null)
   const [promoting, setPromoting] = useState(false)
   const [promoted, setPromoted] = useState(null)
+  const [promotingAll, setPromotingAll] = useState(false)
+  const [promotedAll, setPromotedAll] = useState(null)
 
   useEffect(() => {
     axios.get(`${API}/api/forecast-lab/config`).then((r) => {
@@ -97,6 +99,14 @@ export default function ForecastLab() {
       .then((r) => setPromoted(r.data.error ? { error: r.data.error } : r.data))
       .catch((e) => setPromoted({ error: e.response?.data?.detail || e.message }))
       .finally(() => setPromoting(false))
+  }
+
+  const promoteNetwork = () => {
+    setPromotingAll(true); setPromotedAll(null)
+    axios.post(`${API}/api/forecast-lab/promote-all`, { target, model: 'xgboost' }, { timeout: 300000 })
+      .then((r) => setPromotedAll(r.data.error ? { error: r.data.error } : r.data))
+      .catch((e) => setPromotedAll({ error: e.response?.data?.detail || e.message }))
+      .finally(() => setPromotingAll(false))
   }
 
   const okModels = result ? Object.entries(result.models).filter(([, m]) => m.status === 'ok') : []
@@ -180,7 +190,22 @@ export default function ForecastLab() {
             style={{ backgroundColor: running ? theme.border : theme.gold, color: running ? theme.textSecondary : '#0a0e17', border: 'none', borderRadius: 6, padding: '9px 22px', fontSize: 12, fontWeight: 700, fontFamily: theme.mono, cursor: running ? 'default' : 'pointer' }}>
             {running ? 'Training…' : 'Run Comparison'}
           </button>
+          <button onClick={promoteNetwork} disabled={promotingAll}
+            title="Train the ensemble XGBoost and promote a forecast for ALL branches — makes the base-stock optimizer forecast-driven network-wide"
+            style={{ backgroundColor: 'transparent', color: promotingAll ? theme.textSecondary : theme.green, border: `1px solid ${theme.green}77`, borderRadius: 6, padding: '9px 16px', fontSize: 11, fontWeight: 700, fontFamily: theme.mono, cursor: promotingAll ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+            {promotingAll ? 'Promoting network…' : '▲▲ Promote network (all branches, XGBoost)'}
+          </button>
         </div>
+        {promotedAll && (
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 6, fontSize: 12,
+            backgroundColor: promotedAll.error ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+            border: `1px solid ${promotedAll.error ? theme.red : theme.green}55`,
+            color: promotedAll.error ? theme.red : theme.green, fontFamily: theme.mono }}>
+            {promotedAll.error
+              ? `Network promotion failed: ${promotedAll.error}`
+              : `✓ Network promoted (${promotedAll.model}). ${promotedAll.note}`}
+          </div>
+        )}
 
         {/* Per-model hyperparameters */}
         {params && (
