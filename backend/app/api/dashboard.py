@@ -1,12 +1,35 @@
 import logging
+from datetime import date
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
+
+
+def _reconciled_network_idle(db: Session):
+    """Network idle cash in RAW PKR from the reconciled ledger (fact_gl_daily),
+    anchored to the latest date on/before today. Returns None if unavailable so
+    callers fall back to the ORM snapshot. Keeps the landing KPI consistent with
+    the reconciled business/CFO layer (which reports ~33B, not the stale ~50B)."""
+    try:
+        row = db.execute(
+            text("SELECT MAX(date) FROM fact_gl_daily WHERE date <= :t"),
+            {"t": str(date.today())},
+        ).fetchone()
+        as_of = row[0] if row and row[0] else None
+        if not as_of:
+            return None
+        r = db.execute(
+            text("SELECT SUM(idle_cash_m) FROM fact_gl_daily WHERE date = :d"),
+            {"d": as_of},
+        ).fetchone()
+        return float(r[0] or 0.0) * 1e6  # PKR Millions -> raw PKR (endpoint unit)
+    except Exception:
+        return None
 
 
 @router.get("/dashboard/summary")
@@ -16,7 +39,8 @@ async def dashboard_summary(db: Session = Depends(get_db)):
 
     branch_count = db.query(func.count(Branch.id)).scalar() or 0
     atm_count = db.query(func.count(ATM.id)).scalar() or 0
-    total_idle = db.query(func.sum(Branch.idle_cash)).scalar() or 0
+    recon_idle = _reconciled_network_idle(db)
+    total_idle = recon_idle if recon_idle is not None else (db.query(func.sum(Branch.idle_cash)).scalar() or 0)
     avg_ces = db.query(func.avg(Branch.cash_efficiency_score)).scalar() or 0
 
     return {
@@ -26,6 +50,7 @@ async def dashboard_summary(db: Session = Depends(get_db)):
         "avg_cash_efficiency": round(avg_ces * 100, 1) if avg_ces else 0,
         "estimated_annual_savings": round(total_idle * 0.105, 2),
         "sbp_policy_rate": 0.105,
+        "data_source": "reconciled" if recon_idle is not None else "snapshot",
     }
 
 
@@ -40,7 +65,8 @@ async def executive_summary(db: Session = Depends(get_db)):
 
     # --- UC01: Branch Vault Idle Cash ---
     try:
-        total_idle = db.query(func.sum(Branch.idle_cash)).scalar() or 0
+        recon_idle = _reconciled_network_idle(db)
+        total_idle = recon_idle if recon_idle is not None else (db.query(func.sum(Branch.idle_cash)).scalar() or 0)
         branch_count = db.query(func.count(Branch.id)).scalar() or 0
         uc01_savings = round(total_idle * 0.105, 2)
         uc_results.append({

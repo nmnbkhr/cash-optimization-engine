@@ -20,6 +20,10 @@ const TYPE_COLORS = {
   Mall: '#a855f7',
 }
 
+// The API returns location_type lowercase ("lobby"); the filters/colors above are
+// capitalized. Normalize so the type filter buttons and badge colors actually match.
+const capType = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s)
+
 function getFillColor(pct) {
   if (pct < 20) return '#ef4444'
   if (pct < 40) return '#f59e0b'
@@ -128,7 +132,7 @@ export default function UC02Dashboard() {
 
   // Filter ATMs
   const filteredATMs = atms.filter((a) => {
-    const matchesType = atmFilter === 'All' || a.location_type === atmFilter
+    const matchesType = atmFilter === 'All' || capType(a.location_type) === atmFilter
     const matchesSearch =
       !searchQuery ||
       a.atm_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -215,7 +219,7 @@ export default function UC02Dashboard() {
             {filteredATMs.map((atm) => {
               const isSelected = selectedATM?.atm_id === atm.atm_id
               const fillColor = getFillColor(atm.fill_pct || 0)
-              const typeColor = TYPE_COLORS[atm.location_type] || '#8b949e'
+              const typeColor = TYPE_COLORS[capType(atm.location_type)] || '#8b949e'
 
               return (
                 <button
@@ -239,7 +243,7 @@ export default function UC02Dashboard() {
                       className="text-[9px] font-bold px-1.5 py-0.5 rounded"
                       style={{ backgroundColor: typeColor + '20', color: typeColor }}
                     >
-                      {atm.location_type}
+                      {capType(atm.location_type)}
                     </span>
                   </div>
 
@@ -328,11 +332,11 @@ export default function UC02Dashboard() {
                         <span
                           className="text-[9px] font-bold px-1.5 py-0.5 rounded"
                           style={{
-                            backgroundColor: (TYPE_COLORS[selectedATM.location_type] || '#8b949e') + '20',
-                            color: TYPE_COLORS[selectedATM.location_type] || '#8b949e',
+                            backgroundColor: (TYPE_COLORS[capType(selectedATM.location_type)] || '#8b949e') + '20',
+                            color: TYPE_COLORS[capType(selectedATM.location_type)] || '#8b949e',
                           }}
                         >
-                          {selectedATM.location_type}
+                          {capType(selectedATM.location_type)}
                         </span>
                       </div>
                     </div>
