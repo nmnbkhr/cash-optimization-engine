@@ -1244,10 +1244,18 @@ class CashOptimizationEngine:
         target_count = int(total * CDM_TARGET_PCT)
         installed = sum(1 for b in branches if cdm_map.get(b.branch_id, None) and cdm_map[b.branch_id].status == "installed")
 
+        # Reconciled flows (avg withdrawal/deposit) per branch; fallback to ORM snapshot.
+        recon, _ = self._reconciled_network_state()
+
+        def _flows(b):
+            r = recon.get(b.branch_id)
+            if r:
+                return r["avg_daily_withdrawal_m"], r["avg_daily_deposit_m"]
+            return M(b.avg_daily_withdrawals), M(b.avg_daily_deposits)
+
         recommendations = []
-        for b in sorted(branches, key=lambda x: x.avg_daily_withdrawals, reverse=True):
-            avg_wth = M(b.avg_daily_withdrawals)
-            avg_dep = M(b.avg_daily_deposits)
+        for b in sorted(branches, key=lambda x: _flows(x)[0], reverse=True):
+            avg_wth, avg_dep = _flows(b)
             daily_txn = b.daily_transactions
 
             cdm = cdm_map.get(b.branch_id)
@@ -1465,6 +1473,9 @@ class CashOptimizationEngine:
         total = len(branches)
         cdm_target = int(total * CDM_TARGET_PCT)
 
+        # Reconciled spine: idle/optimal/demand from fact_gl_daily where available.
+        recon, _ = self._reconciled_network_state()
+
         assessments = []
         green = gold = red = 0
 
@@ -1472,10 +1483,20 @@ class CashOptimizationEngine:
             issues = []
             fine_risk = 0
 
+            r = recon.get(b.branch_id)
+            if r:
+                avg_wd_m = r["avg_daily_withdrawal_m"]
+                idle_m = r["idle_cash_m"]
+                optimal_m, _sbp, _ins = self._branch_optimal(avg_wd_m, M(b.vault_capacity))
+            else:
+                avg_wd_m = M(b.avg_daily_withdrawals)
+                idle_m = M(b.idle_cash)
+                optimal_m = M(b.optimal_vault_balance)
+
             # Check 1: CDM mandate
             cdm = cdm_map.get(b.branch_id)
             if not cdm or cdm.status != "installed":
-                if M(b.avg_daily_withdrawals) > 30:  # High-cash branch without CDM
+                if avg_wd_m > 30:  # High-cash branch without CDM
                     issues.append("No CDM — high-cash branch should be prioritized")
                     fine_risk += 0.05
 
@@ -1488,8 +1509,7 @@ class CashOptimizationEngine:
                 fine_risk += CMS_PENALTY_PER_VIOLATION
 
             # Check 3: Idle cash (operational risk)
-            idle_m = M(b.idle_cash)
-            if idle_m > M(b.optimal_vault_balance) * 3 and M(b.optimal_vault_balance) > 0:
+            if idle_m > optimal_m * 3 and optimal_m > 0:
                 issues.append(f"Idle cash PKR {idle_m:.0f}M > 3x optimal — vault insurance risk")
                 fine_risk += 0.05
 
@@ -1601,20 +1621,22 @@ class CashOptimizationEngine:
         profile = EVENT_PROFILES.get(event_name, EVENT_PROFILES["Eid-ul-Fitr"])
         effective_uplift = max(profile["demand_uplift"], uplift_factor)
 
-        branches = self.db.query(Branch).all()
+        # Reconciled spine: current vault + demand + optimal from fact_gl_daily.
+        states, _as_of, _src = self._branch_states()
         total_extra_cash = 0.0
         total_kibor_cost = 0.0
         total_extra_cit_cost = 0.0
         branch_plans = []
 
-        for b in branches:
-            avg_wd = M(b.avg_daily_withdrawals)
-            current_vault = M(b.current_vault_balance)
-            optimal = M(b.optimal_vault_balance) or (avg_wd * 1.65)
+        for st in states:
+            b = st["branch"]
+            avg_wd = st["avg_wd"]
+            current_vault = st["current"]
+            optimal = st["optimal"] or (avg_wd * 1.65)
 
             # Surge-adjusted optimal = normal optimal × uplift
             surge_optimal = optimal * effective_uplift
-            insurance_limit = M(b.vault_capacity) * 0.85
+            insurance_limit = st["insurance_limit"]
             surge_optimal = min(surge_optimal, insurance_limit)
 
             extra_needed = max(0, surge_optimal - current_vault)
@@ -1746,10 +1768,15 @@ class CashOptimizationEngine:
                 "recycling_ratio": round(cdm.recycling_ratio * 100, 1) if cdm and cdm.recycling_ratio else 0,
             }
 
-            # Compliance snapshot
+            # Compliance snapshot (reconciled spine, fallback to ORM snapshot)
             ces = branch.cash_efficiency_score
-            idle_m = M(branch.idle_cash)
-            optimal_m = M(branch.optimal_vault_balance) or M(branch.avg_daily_withdrawals) * 1.65
+            _recon = self._reconciled_branch_state(branch_id)
+            if _recon:
+                idle_m = _recon["idle_cash_m"]
+                optimal_m, _s, _i = self._branch_optimal(_recon["avg_daily_withdrawal_m"], M(branch.vault_capacity))
+            else:
+                idle_m = M(branch.idle_cash)
+                optimal_m = M(branch.optimal_vault_balance) or M(branch.avg_daily_withdrawals) * 1.65
             compliance_color = "GREEN"
             compliance_issues = []
             if idle_m > optimal_m * 3 and optimal_m > 0:
@@ -1821,28 +1848,29 @@ class CashOptimizationEngine:
                 },
             }
 
-        # ── City-wide plan ──
-        if city:
-            branches = self.db.query(Branch).filter(Branch.city == city).all()
-        else:
-            branches = self.db.query(Branch).limit(50).all()
+        # ── City-wide plan ── (reconciled spine: idle/vault per branch from fact_gl_daily)
+        states, _as_of, _src = self._branch_states(city)
+        if not city:
+            states = states[:50]   # network preview cap (matches legacy limit(50))
+        branches = [st["branch"] for st in states]
 
         city_label = city or "Network"
-        total_idle = sum(M(b.idle_cash) for b in branches)
-        total_vault = sum(M(b.current_vault_balance) for b in branches)
+        total_idle = sum(st["idle"] for st in states)
+        total_vault = sum(st["current"] for st in states)
         avg_ces = sum(b.cash_efficiency_score for b in branches) / max(len(branches), 1)
 
         # Top 5 branches needing action (highest idle cash)
-        by_idle = sorted(branches, key=lambda b: b.idle_cash or 0, reverse=True)
+        by_idle = sorted(states, key=lambda st: st["idle"], reverse=True)
         priority_branches = []
-        for b in by_idle[:5]:
+        for st in by_idle[:5]:
+            b = st["branch"]
             vault = self.vault_recommendation(b.branch_id)
             priority_branches.append({
                 "branch_id": b.branch_id,
                 "name": b.name,
                 "action": vault.get("decision", {}).get("action", "HOLD"),
                 "amount_m": vault.get("decision", {}).get("action_amount", 0),
-                "idle_m": round(M(b.idle_cash), 1),
+                "idle_m": round(st["idle"], 1),
             })
 
         # Netting summary
@@ -1892,8 +1920,12 @@ class CashOptimizationEngine:
         atms = self.db.query(ATM).all()
         nostros = self.db.query(NostroAccount).all()
 
-        # ── UC-01: Vault idle cash freed ──
-        branch_idle = sum(M(b.idle_cash) for b in branches)
+        # ── UC-01: Vault idle cash freed (reconciled spine, fallback to ORM snapshot) ──
+        net_state, _as_of = self._reconciled_network_state()
+        if net_state:
+            branch_idle = sum(s["idle_cash_m"] for s in net_state.values())
+        else:
+            branch_idle = sum(M(b.idle_cash) for b in branches)
         vault_annual = branch_idle * self.kibor
 
         # ── UC-02: ATM idle cash freed ──
@@ -1909,9 +1941,12 @@ class CashOptimizationEngine:
         cit_trips_saved = netting.get("matches_found", 0)
         cit_saving_annual = cit_trips_saved * self.normal_cit * 12  # monthly matches × 12
 
-        # ── UC-04: CRR float income ──
-        latest_crr = self.db.query(CRRPosition).order_by(CRRPosition.date.desc()).first()
-        crr_freed = M(latest_crr.freed_liquidity) if latest_crr else 0
+        # ── UC-04: CRR float income (reconciled: held-required excess, fallback to table) ──
+        if net_state:
+            crr_freed = sum(max(0.0, s["crr_held_m"] - s["crr_required_m"]) for s in net_state.values())
+        else:
+            latest_crr = self.db.query(CRRPosition).order_by(CRRPosition.date.desc()).first()
+            crr_freed = M(latest_crr.freed_liquidity) if latest_crr else 0
         crr_annual = crr_freed * self.kibor
 
         # ── UC-05: Nostro excess repatriation ──
