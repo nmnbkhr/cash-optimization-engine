@@ -90,6 +90,58 @@ def _shortfall_penalty(shortfall_amount: float, days: int = 1) -> float:
     return shortfall_amount * _PENALTY_RATE / _DAYS_PER_YEAR * days
 
 
+def _week_start(d: datetime.date) -> datetime.date:
+    """Friday-anchored SBP maintenance-week start date (unique across years)."""
+    return d - datetime.timedelta(days=(d.weekday() - 4) % 7)
+
+
+def _ledger_crr_weeks(db: Session, weeks_back: int = 52) -> List[Dict[str, Any]]:
+    """Aggregate network CRR from the reconciled ledger (fact_gl_daily) into
+    SBP maintenance weeks, anchored to the latest date on/before today. All amounts
+    PKR Millions. Empty list if the ledger is unavailable (caller falls back to the
+    stale CRRPosition ORM table). Deposit base is implied as required/CRR_WEEKLY_AVG."""
+    from sqlalchemy import text
+    try:
+        row = db.execute(
+            text("SELECT MAX(date) FROM fact_gl_daily WHERE date <= :t"),
+            {"t": str(datetime.date.today())},
+        ).fetchone()
+        as_of = row[0] if row and row[0] else None
+        if not as_of:
+            return []
+        as_of_d = datetime.datetime.strptime(as_of, "%Y-%m-%d").date()
+        start = _week_start(as_of_d - datetime.timedelta(weeks=weeks_back))
+        rows = db.execute(
+            text("SELECT date, SUM(crr_held_m) held, SUM(crr_required_m) req "
+                 "FROM fact_gl_daily WHERE date >= :s AND date <= :e "
+                 "GROUP BY date ORDER BY date"),
+            {"s": str(start), "e": as_of},
+        ).fetchall()
+        buckets: Dict[datetime.date, List[Tuple[float, float]]] = {}
+        for r in rows:
+            d = datetime.datetime.strptime(r.date, "%Y-%m-%d").date()
+            buckets.setdefault(_week_start(d), []).append(
+                (float(r.held or 0.0), float(r.req or 0.0)))
+        weeks = []
+        for ws in sorted(buckets):
+            days = buckets[ws]
+            avg_held = float(np.mean([h for h, _ in days]))
+            avg_req = float(np.mean([q for _, q in days]))
+            deposit = avg_req / CRR_WEEKLY_AVG if CRR_WEEKLY_AVG else 0.0
+            weeks.append({
+                "week_start": ws,
+                "days": len(days),
+                "avg_held_m": avg_held,
+                "avg_req_m": avg_req,
+                "deposit_m": deposit,
+                "avg_ratio": (avg_held / deposit) if deposit else 0.0,
+                "excess_m": max(0.0, avg_held - avg_req),  # only over-holding is real float
+            })
+        return weeks
+    except Exception:
+        return []
+
+
 # ---------------------------------------------------------------------------
 # CRRFloatOptimizer
 # ---------------------------------------------------------------------------
@@ -439,6 +491,77 @@ class CRRStrategyGame:
 # ---------------------------------------------------------------------------
 # Database query functions
 # ---------------------------------------------------------------------------
+def _ledger_crr_timeline(db: Session, weeks: int = 12) -> Optional[Dict[str, Any]]:
+    """Build the weekly-timeline payload from the reconciled ledger (last `weeks`
+    maintenance weeks). Returns None if the ledger is unavailable (caller falls back
+    to the stale ORM table). Amounts PKR Millions; ratios in percent for display."""
+    from sqlalchemy import text
+    try:
+        row = db.execute(
+            text("SELECT MAX(date) FROM fact_gl_daily WHERE date <= :t"),
+            {"t": str(datetime.date.today())},
+        ).fetchone()
+        as_of = row[0] if row and row[0] else None
+        if not as_of:
+            return None
+        as_of_d = datetime.datetime.strptime(as_of, "%Y-%m-%d").date()
+        start = _week_start(as_of_d - datetime.timedelta(weeks=weeks))
+        rows = db.execute(
+            text("SELECT date, SUM(crr_held_m) held, SUM(crr_required_m) req "
+                 "FROM fact_gl_daily WHERE date >= :s AND date <= :e "
+                 "GROUP BY date ORDER BY date"),
+            {"s": str(start), "e": as_of},
+        ).fetchall()
+        if not rows:
+            return None
+        buckets: Dict[datetime.date, List[Tuple[str, float, float]]] = {}
+        for r in rows:
+            d = datetime.datetime.strptime(r.date, "%Y-%m-%d").date()
+            buckets.setdefault(_week_start(d), []).append(
+                (r.date, float(r.held or 0.0), float(r.req or 0.0)))
+        tol = 0.001
+        timeline = []
+        for i, ws in enumerate(sorted(buckets), start=1):
+            days = buckets[ws]
+            deps = [(h / (q / CRR_WEEKLY_AVG)) if q else 0.0 for _, h, q in days]  # daily ratio
+            avg_held = float(np.mean([h for _, h, _ in days]))
+            avg_req = float(np.mean([q for _, _, q in days]))
+            deposit = avg_req / CRR_WEEKLY_AVG if CRR_WEEKLY_AVG else 0.0
+            weekly_avg = (avg_held / deposit) if deposit else 0.0
+            excess = max(0.0, avg_held - avg_req)
+            timeline.append({
+                "week_number": i,
+                "date_start": days[0][0],
+                "date_end": days[-1][0],
+                "days_reported": len(days),
+                "daily_crr_ratios_pct": [round(x * 100, 2) for x in deps],
+                "weekly_avg_crr_pct": round(weekly_avg * 100, 2),
+                "is_compliant": avg_held >= avg_req * (1.0 - tol),
+                "excess_crr_pct": round(max(0.0, weekly_avg - CRR_WEEKLY_AVG) * 100, 3),
+                "freed_liquidity": round(excess, 0),
+                "income_earned": round(_overnight_income(excess, _SBP_WEEK_DAYS), 0),
+                "daily_details": [{
+                    "date": dt,
+                    "crr_ratio_pct": round((h / (q / CRR_WEEKLY_AVG)) * 100, 2) if q else 0.0,
+                    "deposit_base": round(q / CRR_WEEKLY_AVG, 0) if q else 0.0,
+                    "actual_crr": round(h, 0),
+                    "excess_crr": round(max(0.0, h - q), 0),
+                    "freed_liquidity": round(max(0.0, h - q), 0),
+                    "income_earned": round(_overnight_income(max(0.0, h - q), 1), 0),
+                    "is_compliant": h >= q * (1.0 - tol),
+                } for dt, h, q in days],
+            })
+        return {
+            "weeks_requested": weeks, "weeks_returned": len(timeline),
+            "timeline": timeline,
+            "thresholds": {"weekly_avg_pct": CRR_WEEKLY_AVG * 100,
+                           "daily_min_pct": CRR_DAILY_MIN * 100},
+            "data_source": "reconciled",
+        }
+    except Exception:
+        return None
+
+
 def get_crr_summary(db: Session) -> Dict[str, Any]:
     """
     Query CRRPosition table, compute current week status, historical
@@ -448,6 +571,78 @@ def get_crr_summary(db: Session) -> Dict[str, Any]:
     try:
         today = datetime.date.today()
         current_week = _sbp_week_number(today)
+
+        # Prefer the reconciled ledger (fact_gl_daily) so figures match the CFO/business
+        # CRR view and aren't degenerate-zero from the stale crr_positions ORM table
+        # (which ends 2025-03 — outside the trailing-52-week window). Note: CRR is a
+        # WEEKLY-AVERAGE requirement, so intra-week timing frees no capital in aggregate;
+        # the only genuine float is over-holding above requirement (excess_m), which is
+        # ~0 when the bank tracks the requirement — a correct, well-managed outcome.
+        lweeks = _ledger_crr_weeks(db, weeks_back=52)
+        if lweeks:
+            # Operational compliance tolerance: the weekly average must meet the
+            # requirement within ~10bps. Without it, synthetic daily noise around an
+            # essentially-exact 6% hold flips borderline weeks to "non-compliant".
+            tol = 0.001
+            def _compliant(w):
+                return w["avg_held_m"] >= w["avg_req_m"] * (1.0 - tol)
+
+            cur = lweeks[-1]
+            current_avg = cur["avg_ratio"]
+            current_compliant = _compliant(cur)
+            current_excess = max(0.0, current_avg - CRR_WEEKLY_AVG)
+            days_reported = cur["days"]
+
+            compliant_weeks = sum(1 for w in lweeks if _compliant(w))
+            total_weeks = len(lweeks)
+            total_freed = sum(w["excess_m"] for w in lweeks)
+            total_income = sum(_overnight_income(w["excess_m"], _SBP_WEEK_DAYS) for w in lweeks)
+            excess_ratios = [max(0.0, w["avg_ratio"] - CRR_WEEKLY_AVG) for w in lweeks]
+            avg_excess = float(np.mean(excess_ratios)) if excess_ratios else 0.0
+            compliance_rate = compliant_weeks / total_weeks if total_weeks else 1.0
+            deposit_base = float(np.mean([w["deposit_m"] for w in lweeks]))
+
+            wasted_liquidity = avg_excess * deposit_base
+            wasted_income = _overnight_income(wasted_liquidity, 365)
+            weekly_freed_estimate = max(0.0, avg_excess) * deposit_base
+            optimal_weekly_income = _overnight_income(weekly_freed_estimate, _SBP_WEEK_DAYS)
+            actual_weekly_income = total_income / max(total_weeks, 1)
+
+            return _to_python({
+                "current_week": {
+                    "week_number": current_week, "days_reported": days_reported,
+                    "avg_crr_ratio_pct": round(current_avg * 100, 2),
+                    "is_compliant": current_compliant,
+                    "excess_crr_pct": round(current_excess * 100, 2),
+                    "days_remaining": _days_remaining_in_sbp_week(today),
+                },
+                "historical": {
+                    "total_weeks_analyzed": total_weeks,
+                    "compliant_weeks": compliant_weeks,
+                    "compliance_rate_pct": round(compliance_rate * 100, 2),
+                    "total_freed_liquidity": round(total_freed, 0),
+                    "total_income_earned": round(total_income, 0),
+                    "avg_excess_crr_pct": round(avg_excess * 100, 3),
+                    "wasted_liquidity_annual": round(wasted_liquidity, 0),
+                    "wasted_income_annual": round(wasted_income, 0),
+                },
+                "comparison": {
+                    "actual_avg_weekly_income": round(actual_weekly_income, 0),
+                    "optimal_weekly_income": round(optimal_weekly_income, 0),
+                    "income_gap": round(max(0, optimal_weekly_income - actual_weekly_income), 0),
+                    "efficiency_pct": round(
+                        (actual_weekly_income / optimal_weekly_income * 100)
+                        if optimal_weekly_income > 0 else 100.0, 2),
+                },
+                "deposit_base": round(deposit_base, 0),
+                "policy_rate_pct": POLICY_RATE * 100,
+                "overnight_repo_rate_pct": OVERNIGHT_REPO_RATE * 100,
+                "crr_weekly_avg_pct": CRR_WEEKLY_AVG * 100,
+                "crr_daily_min_pct": CRR_DAILY_MIN * 100,
+                "data_source": "reconciled",
+            })
+
+        # Fallback: stale ORM CRRPosition table
         current_week_positions = (
             db.query(CRRPosition)
             .filter(CRRPosition.week_number == current_week)
@@ -539,6 +734,7 @@ def get_crr_summary(db: Session) -> Dict[str, Any]:
             "overnight_repo_rate_pct": OVERNIGHT_REPO_RATE * 100,
             "crr_weekly_avg_pct": CRR_WEEKLY_AVG * 100,
             "crr_daily_min_pct": CRR_DAILY_MIN * 100,
+            "data_source": "snapshot",
         })
     except Exception as exc:
         logger.error("Error computing CRR summary: %s", exc, exc_info=True)
@@ -549,6 +745,13 @@ def get_crr_weekly_timeline(db: Session, weeks: int = 12) -> Dict[str, Any]:
     """Return last N weeks of CRR data for frontend timeline chart."""
     try:
         today = datetime.date.today()
+
+        # Prefer the reconciled ledger so the timeline chart isn't blank (the stale
+        # CRRPosition ORM table ends 2025-03, outside the window).
+        ledger_tl = _ledger_crr_timeline(db, weeks)
+        if ledger_tl is not None:
+            return _to_python(ledger_tl)
+
         start_date = today - datetime.timedelta(weeks=weeks)
         positions = (
             db.query(CRRPosition).filter(CRRPosition.date >= start_date)
