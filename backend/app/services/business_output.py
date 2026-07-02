@@ -148,6 +148,7 @@ class CashOptimizationEngine:
     # ══════════════════════════════════════════════════════════
     _NETWORK_CACHE_KEY = None
     _NETWORK_CACHE_VAL = None
+    _PROMO_CACHE = None
 
     def _reconciled_network_state(self, lookback: int = 90) -> tuple[dict, str | None]:
         """Latest reconciled row per branch from fact_gl_daily, keyed by branch_id, plus
@@ -249,39 +250,61 @@ class CashOptimizationEngine:
         optimal = min(max(avg_wd_m * 1.65, sbp_minimum), insurance_limit)
         return optimal, sbp_minimum, insurance_limit
 
+    def _promoted_forecast_map(self) -> dict:
+        """Bulk: latest promoted branch_withdrawals forecast per branch → newsvendor inputs
+        {branch_id: {mu, sigma, model, mape, forecast_date}}, averaged over the first
+        COVERAGE_DAYS. One query, cached per instance. Empty until a forecast is promoted
+        (Forecast Lab → Promote), so non-promoted branches stay on the heuristic."""
+        if self._PROMO_CACHE is not None:
+            return self._PROMO_CACHE
+        out = {}
+        try:
+            rows = self.db.execute(
+                text("SELECT entity_id, forecast_date, predicted_value, confidence_lower, "
+                     "       confidence_upper, mape, model_version "
+                     "FROM forecasts WHERE entity_type='branch_withdrawals' "
+                     "ORDER BY entity_id, forecast_date DESC, target_date ASC")
+            ).fetchall()
+            ncov = int(FORECAST_COVERAGE_DAYS) or 1
+            grouped: dict = {}
+            for r in rows:
+                grouped.setdefault(r.entity_id, []).append(r)
+            for bid, rs in grouped.items():
+                latest = rs[0].forecast_date
+                hrows = [r for r in rs if r.forecast_date == latest][:ncov]
+                if not hrows:
+                    continue
+                mu = sum(float(r.predicted_value or 0.0) for r in hrows) / len(hrows)
+                sig = sum(max(0.0, (float(r.confidence_upper or 0.0) - float(r.confidence_lower or 0.0)))
+                          / (2 * FORECAST_BAND_Z) for r in hrows) / len(hrows)
+                out[bid] = {"mu": mu, "sigma": sig, "model": hrows[0].model_version,
+                            "mape": hrows[0].mape, "forecast_date": str(latest)}
+        except Exception:
+            out = {}
+        self._PROMO_CACHE = out
+        return out
+
+    def _optimal_from_forecast(self, mu: float, sigma: float, sbp_minimum: float,
+                               insurance_limit: float) -> tuple[float, float, float]:
+        """Base-stock/newsvendor optimal = μ·L + z·σ·√L, bounded. Returns (optimal, base, safety)."""
+        L = FORECAST_COVERAGE_DAYS
+        base = mu * L
+        safety = FORECAST_SERVICE_Z * sigma * math.sqrt(L)
+        return min(max(base + safety, sbp_minimum), insurance_limit), base, safety
+
     def _forecast_driven_optimal(self, branch_id: str, sbp_minimum: float,
                                  insurance_limit: float, cit_threshold: float,
                                  current: float, heuristic_optimal: float) -> dict:
         """Newsvendor / base-stock target from the branch's promoted WITHDRAWAL forecast.
-
-        optimal = μ·L + z·σ·√L, where μ/σ are the forecast's mean & uncertainty over the
-        first L=coverage days, z is the service-level score. Values in the forecasts table
-        are already PKR M. Returns {available: False, ...} when no forecast has been promoted
-        (Forecast Lab → Promote), so the caller can show the heuristic alone."""
-        rows = (
-            self.db.query(Forecast)
-            .filter(Forecast.entity_type == "branch_withdrawals",
-                    Forecast.entity_id == branch_id)
-            .order_by(Forecast.forecast_date.desc(), Forecast.target_date.asc())
-            .all()
-        )
-        if not rows:
+        Returns {available: False, ...} when no forecast has been promoted."""
+        pf = self._promoted_forecast_map().get(branch_id)
+        if not pf:
             return {"available": False,
                     "note": "No promoted withdrawal forecast. Use Forecast Lab → Promote to enable."}
-        latest_origin = rows[0].forecast_date
-        horizon_rows = [r for r in rows if r.forecast_date == latest_origin][: int(FORECAST_COVERAGE_DAYS) or 1]
-        if not horizon_rows:
-            return {"available": False, "note": "Forecast present but no horizon rows."}
 
-        mu = sum(float(r.predicted_value or 0.0) for r in horizon_rows) / len(horizon_rows)
-        sigmas = [max(0.0, (float(r.confidence_upper or 0.0) - float(r.confidence_lower or 0.0)))
-                  / (2 * FORECAST_BAND_Z) for r in horizon_rows]
-        sigma = sum(sigmas) / len(sigmas) if sigmas else 0.0
-
+        mu, sigma = pf["mu"], pf["sigma"]
         L = FORECAST_COVERAGE_DAYS
-        base = mu * L
-        safety = FORECAST_SERVICE_Z * sigma * math.sqrt(L)
-        optimal_f = min(max(base + safety, sbp_minimum), insurance_limit)
+        optimal_f, base, safety = self._optimal_from_forecast(mu, sigma, sbp_minimum, insurance_limit)
         binding = ("insurance" if optimal_f >= insurance_limit - 1e-6 else
                    "sbp_minimum" if optimal_f <= sbp_minimum + 1e-6 else "forecast")
 
@@ -295,9 +318,9 @@ class CashOptimizationEngine:
 
         return {
             "available": True,
-            "model": rows[0].model_version,
-            "forecast_date": str(latest_origin),
-            "mape": rows[0].mape,
+            "model": pf["model"],
+            "forecast_date": pf["forecast_date"],
+            "mape": pf["mape"],
             "policy": {
                 "type": "base-stock (s,S) newsvendor",
                 "coverage_days": L,
@@ -333,7 +356,9 @@ class CashOptimizationEngine:
             q = q.filter(Branch.city == city)
         branches = q.all()
         recon, as_of = self._reconciled_network_state()
+        promo = self._promoted_forecast_map()      # branches with a promoted forecast → forecast-driven
         reconciled_hits = 0
+        forecast_hits = 0
         states = []
         for b in branches:
             r = recon.get(b.branch_id)
@@ -342,26 +367,38 @@ class CashOptimizationEngine:
                 reconciled_hits += 1
                 current, idle = r["closing_balance_m"], r["idle_cash_m"]
                 avg_wd, avg_dep = r["avg_daily_withdrawal_m"], r["avg_daily_deposit_m"]
-                optimal, sbp_min, ins_limit = self._branch_optimal(avg_wd, capacity)
+                optimal_heur, sbp_min, ins_limit = self._branch_optimal(avg_wd, capacity)
             else:
                 current, idle = M(b.current_vault_balance), M(b.idle_cash)
                 avg_wd, avg_dep = M(b.avg_daily_withdrawals), M(b.avg_daily_deposits)
-                optimal = M(b.optimal_vault_balance)
+                optimal_heur = M(b.optimal_vault_balance)
                 ins_limit = capacity * 0.85
                 sbp_min = max(avg_wd * 0.3, 2.0)
-                if optimal <= 0:
-                    optimal = min(max(avg_wd * 1.65, sbp_min), ins_limit)
+                if optimal_heur <= 0:
+                    optimal_heur = min(max(avg_wd * 1.65, sbp_min), ins_limit)
+
+            # Promotion link: a branch with a promoted forecast becomes forecast-driven for
+            # EVERY UC that reads this optimal (netting UC-03, CIT UC-08, consolidated).
+            pf = promo.get(b.branch_id)
+            if pf:
+                forecast_hits += 1
+                optimal, _b, _s = self._optimal_from_forecast(pf["mu"], pf["sigma"], sbp_min, ins_limit)
+                basis = "forecast"
+            else:
+                optimal = optimal_heur
+                basis = "heuristic"
             states.append({
                 "branch": b, "recon": r,
                 "current": current, "idle": idle,
                 "avg_wd": avg_wd, "avg_dep": avg_dep,
                 "capacity": capacity, "optimal": optimal,
+                "optimal_heuristic": optimal_heur, "optimal_basis": basis,
                 "sbp_min": sbp_min, "insurance_limit": ins_limit,
             })
         data_source = "reconciled" if reconciled_hits else "snapshot"
         if reconciled_hits and reconciled_hits < len(states):
             data_source = "mixed"
-        return states, as_of, data_source
+        return states, as_of, data_source, forecast_hits
 
     # ══════════════════════════════════════════════════════════
     # UC-01: VAULT RECOMMENDATION
@@ -391,11 +428,20 @@ class CashOptimizationEngine:
         insurance_limit = capacity * 0.85
         sbp_minimum = max(avg_wd * 0.3, 2.0)
 
-        optimal = M(branch.optimal_vault_balance)
-        if optimal <= 0:
-            optimal = avg_wd * 1.65
-        optimal = max(optimal, sbp_minimum)
-        optimal = min(optimal, insurance_limit)
+        optimal_heuristic = M(branch.optimal_vault_balance)
+        if optimal_heuristic <= 0:
+            optimal_heuristic = avg_wd * 1.65
+        optimal_heuristic = min(max(optimal_heuristic, sbp_minimum), insurance_limit)
+
+        # Promotion link: if a forecast is promoted for this branch, the LIVE target becomes
+        # forecast-driven (the heuristic is kept below as the comparison); else heuristic.
+        _pf = self._promoted_forecast_map().get(branch_id)
+        if _pf:
+            optimal, _b, _s = self._optimal_from_forecast(_pf["mu"], _pf["sigma"], sbp_minimum, insurance_limit)
+            optimal_basis = "forecast"
+        else:
+            optimal = optimal_heuristic
+            optimal_basis = "heuristic"
         delta = round(current - optimal, 2)
         cit_threshold = 5.0
 
@@ -452,6 +498,8 @@ class CashOptimizationEngine:
                 "action": action,
                 "action_amount": round(abs(delta), 1),
                 "action_detail": action_detail,
+                "optimal_basis": optimal_basis,
+                "optimal_heuristic": round(optimal_heuristic, 1),
             },
             "constraints": {
                 "sbp_minimum": round(sbp_minimum, 1),
@@ -486,7 +534,7 @@ class CashOptimizationEngine:
         # heuristic decision, so the desk can compare before the bank switches the policy.
         # Populated once a withdrawal forecast is promoted from the Forecast Lab.
         rec["forecast_optimization"] = self._forecast_driven_optimal(
-            branch_id, sbp_minimum, insurance_limit, cit_threshold, current, optimal
+            branch_id, sbp_minimum, insurance_limit, cit_threshold, current, optimal_heuristic
         )
 
         # Constitution gate: critique the CURRENT vault state (a branch already over its
@@ -604,7 +652,7 @@ class CashOptimizationEngine:
     def netting_opportunities(self, city: str = None) -> dict:
         # Reconciled spine: surplus/deficit computed from ledger balances vs the same
         # optimal formula UC-01 uses, so netting agrees with the vault recommendations.
-        states, as_of, data_source = self._branch_states(city)
+        states, as_of, data_source, _fh = self._branch_states(city)
         surplus = [st for st in states if st["optimal"] > 0 and st["current"] > st["optimal"] * 1.3]
         deficit = [st for st in states if st["optimal"] > 0 and st["current"] < st["optimal"] * 0.8]
 
@@ -1000,7 +1048,7 @@ class CashOptimizationEngine:
 
     def cit_route_sheet(self, city: str) -> dict:
         # Reconciled spine: pickup/delivery need computed from ledger balances vs optimal.
-        states, as_of, data_source = self._branch_states(city)
+        states, as_of, data_source, _fh = self._branch_states(city)
         needs_pickup = [
             st for st in states
             if st["optimal"] > 0 and st["current"] > st["optimal"] * 1.3
@@ -1086,7 +1134,7 @@ class CashOptimizationEngine:
     def digital_shift_report(self) -> dict:
         # Reconciled spine for cash-intensity (withdrawal vs deposit flow); transaction
         # counts are a static branch attribute (not carried in the daily ledger).
-        states, as_of, data_source = self._branch_states()
+        states, as_of, data_source, _fh = self._branch_states()
 
         total_cash_txns = sum(st["branch"].daily_transactions * 0.65 for st in states)
         total_digital_txns = sum(st["branch"].daily_transactions * 0.35 for st in states)
@@ -1733,7 +1781,7 @@ class CashOptimizationEngine:
         effective_uplift = max(profile["demand_uplift"], uplift_factor)
 
         # Reconciled spine: current vault + demand + optimal from fact_gl_daily.
-        states, _as_of, _src = self._branch_states()
+        states, _as_of, _src, _fh = self._branch_states()
         total_extra_cash = 0.0
         total_kibor_cost = 0.0
         total_extra_cit_cost = 0.0
@@ -1960,7 +2008,7 @@ class CashOptimizationEngine:
             }
 
         # ── City-wide plan ── (reconciled spine: idle/vault per branch from fact_gl_daily)
-        states, _as_of, _src = self._branch_states(city)
+        states, _as_of, _src, _fh = self._branch_states(city)
         if not city:
             states = states[:50]   # network preview cap (matches legacy limit(50))
         branches = [st["branch"] for st in states]
