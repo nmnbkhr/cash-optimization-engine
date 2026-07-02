@@ -1258,11 +1258,9 @@ class CashOptimizationEngine:
             cash_premises = costs["premises_m"]
             cit_handling = costs["cash_handling_m"] + costs["cit_m"]
             other_ops = costs["direct_m"] + costs["other_m"]
-            # The ledger's insurance_cost_m column is mis-scaled (~4x real), so recompute
-            # the carry memo from vault held x documented rate x 30 days — the same basis
-            # uc10_pnl_reconciled uses. ~0.015%/day -> ~5.4%/yr, vs the column's ~21%/yr.
-            total_vault_m = sum(s["closing_balance_m"] for s in net_state.values()) if net_state else 0.0
-            insurance_carry = total_vault_m * self.vault_insurance_rate * 30
+            # Trailing-30d vault insurance carry from the ledger (column corrected to
+            # 0.015%/day at generation). Reported as a memo, excluded from ops cost.
+            insurance_carry = costs["insurance_m"]
         else:
             data_source = "snapshot"
             n_branches = len(branches)

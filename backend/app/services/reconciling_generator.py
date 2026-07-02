@@ -41,6 +41,7 @@ import numpy as np
 import pandas as pd
 
 from app.core import pk_calendar
+from app.core.constants import VAULT_INSURANCE_RATE
 
 # ---------------------------------------------------------------------------
 # SBP rate loader — graceful fallback
@@ -501,7 +502,10 @@ class ReconcilingDataGenerator:
             fee_income_daily = int_income_daily * 0.08  # ~8% of interest income
             cash_handling_daily = direct_daily * 0.40
             cit_daily = direct_daily * 0.30
-            insurance_daily = closing * 0.00015 / 365 * n_days  # vault insurance
+            # Vault insurance = documented daily rate (0.015%/day) on that day's held
+            # cash. Do NOT divide by 365 or scale by n_days — `closing` is already the
+            # per-day balance, so `/365 * n_days` (n_days~1461) inflated every day ~4x.
+            insurance_daily = closing * VAULT_INSURANCE_RATE  # vault insurance, per day
 
             # ---------------------------------------------------------------
             # 8. Assemble rows (vectorized per branch)

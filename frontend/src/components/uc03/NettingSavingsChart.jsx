@@ -1,9 +1,9 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Text } from 'recharts'
 import { TrendingDown } from 'lucide-react'
-import { formatPKRM } from '../../utils/formatPKR'
+import formatPKR, { formatYAxis } from '../../utils/formatPKR'
 
 
-// UC-03 cost fields (central_vault_cost, direct_netting_cost) are returned in PKR Millions.
+// UC-03 cost fields (central_vault_cost, direct_netting_cost) are returned in RAW PKR.
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
@@ -14,7 +14,7 @@ const CustomTooltip = ({ active, payload }) => {
     >
       <p className="font-bold mb-1">{d.name}</p>
       <p style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-        PKR {formatPKRM(d.cost)}
+        PKR {formatPKR(d.cost)}
       </p>
     </div>
   )
@@ -67,7 +67,7 @@ export default function NettingSavingsChart({ summary }) {
               tick={{ fill: '#8b949e', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}
               axisLine={{ stroke: '#1e293b' }}
               tickLine={false}
-              tickFormatter={(v) => formatPKRM(v)}
+              tickFormatter={(v) => formatYAxis(v)}
             />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
             <Bar dataKey="cost" radius={[4, 4, 0, 0]} maxBarSize={80}>
@@ -90,7 +90,7 @@ export default function NettingSavingsChart({ summary }) {
             className="text-sm font-bold"
             style={{ color: '#22c55e', fontFamily: "'JetBrains Mono', monospace" }}
           >
-            PKR {formatPKRM(savings)}
+            PKR {formatPKR(savings)}
           </span>
         </div>
       )}

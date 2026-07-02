@@ -1,7 +1,7 @@
 import { Zap, Shield, TrendingUp, TrendingDown } from 'lucide-react'
-import formatPKR, { formatPKRM } from '../../utils/formatPKR'
-// UC-03 auction: total_volume / match amount / supplier-buyer volume are RAW PKR;
-// welfare_gain and per-match welfare_gain/surplus are PKR Millions (backend ÷1e6).
+import formatPKR from '../../utils/formatPKR'
+// UC-03 auction: all monetary fields (total_volume, match amount, supplier/buyer
+// volume, welfare_gain, surplus) are RAW PKR.
 
 export default function AuctionResultsTable({ result }) {
   if (!result) {
@@ -63,7 +63,7 @@ export default function AuctionResultsTable({ result }) {
             className="text-sm font-bold"
             style={{ color: '#22c55e', fontFamily: "'JetBrains Mono', monospace" }}
           >
-            {formatPKRM(stats.welfare_gain || 0)}
+            {formatPKR(stats.welfare_gain || 0)}
           </p>
           <p className="text-[10px] mt-0.5" style={{ color: '#8b949e' }}>Welfare Gain</p>
         </div>
@@ -157,7 +157,7 @@ export default function AuctionResultsTable({ result }) {
               className="text-[10px] text-right"
               style={{ color: '#2dd4bf', fontFamily: "'JetBrains Mono', monospace" }}
             >
-              {formatPKRM(m.welfare_gain ?? m.surplus)}
+              {formatPKR(m.welfare_gain ?? m.surplus)}
             </span>
           </div>
         ))}

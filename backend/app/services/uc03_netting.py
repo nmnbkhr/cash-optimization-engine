@@ -545,14 +545,14 @@ class BranchCashNetwork:
         savings = central_cost - total_logistics_cost
         efficiency = (savings / central_cost * 100) if central_cost > 0 else 0.0
 
-        # Convert per-transfer costs from raw PKR to PKR Millions for API consistency
         for t in transfers:
-            t["cost"] = round(t["cost"] / 1e6, 4)
+            t["cost"] = round(t["cost"], 2)
 
         # Per-city summary
         city_summary = self._city_summary(transfers)
 
-        # All monetary values in PKR Millions (costs computed in raw PKR, divide by 1e6)
+        # All monetary values in RAW PKR — consistent with amounts here and with every
+        # other /api/uc0* endpoint (the frontend renders UC data with raw-PKR formatPKR).
         return {
             "total_surplus": round(total_surplus, 2),
             "total_deficit": round(total_deficit, 2),
@@ -560,10 +560,10 @@ class BranchCashNetwork:
             "optimal_flows": transfers,
             "total_transfers": len(transfers),
             "total_transfer_amount": round(total_transfer_amount, 2),
-            "total_logistics_cost": round(total_logistics_cost / 1e6, 4),
-            "savings_vs_central": round(max(savings, 0) / 1e6, 4),
-            "central_vault_cost": round(central_cost / 1e6, 4),
-            "direct_netting_cost": round(total_logistics_cost / 1e6, 4),
+            "total_logistics_cost": round(total_logistics_cost, 2),
+            "savings_vs_central": round(max(savings, 0), 2),
+            "central_vault_cost": round(central_cost, 2),
+            "direct_netting_cost": round(total_logistics_cost, 2),
             "network_efficiency": round(max(efficiency, 0), 2),
             "city_summary": city_summary,
         }
@@ -715,9 +715,9 @@ class CashAuction:
                 "ask_price": round(a_price, 6),
                 "bid_price": round(b_price, 6),
                 "clearing_price": round(clearing, 6),
-                "supplier_surplus": round(supplier_surplus / 1e6, 4),
-                "buyer_surplus": round(buyer_surplus / 1e6, 4),
-                "welfare_gain": round(welfare_gain / 1e6, 4),
+                "supplier_surplus": round(supplier_surplus, 2),
+                "buyer_surplus": round(buyer_surplus, 2),
+                "welfare_gain": round(welfare_gain, 2),
             })
 
             ask_remaining[ai] -= transfer
@@ -763,7 +763,7 @@ class CashAuction:
         return {
             "auction_results": matches,
             "total_volume": round(total_volume, 2),
-            "total_welfare_gain": round(total_welfare / 1e6, 4),
+            "total_welfare_gain": round(total_welfare, 2),
             "avg_clearing_price_pct": round(float(avg_clearing_pct), 2),
             "num_matches": len(matches),
             "market_efficiency": round(float(market_efficiency), 2),
@@ -870,10 +870,10 @@ class CashAuction:
                 vcg_discount_buyer = 0
 
             m["vcg_supplier_payment"] = round(
-                (m["clearing_price"] * m["amount"] - vcg_discount_supplier) / 1e6, 4
+                m["clearing_price"] * m["amount"] - vcg_discount_supplier, 2
             )
             m["vcg_buyer_payment"] = round(
-                (m["clearing_price"] * m["amount"] + vcg_discount_buyer) / 1e6, 4
+                m["clearing_price"] * m["amount"] + vcg_discount_buyer, 2
             )
 
         return matches
