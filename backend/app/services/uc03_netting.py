@@ -933,7 +933,21 @@ def get_netting_network_summary(db_session: Session) -> Dict[str, Any]:
         - Top 10 surplus and top 10 deficit branches
         - City-level surplus / deficit heatmap data
     """
-    branches = _load_branches(db_session)
+    from app.core.reconciled import apply_reconciled_to_orm
+
+    # Reconcile balances/optimal to the ledger (in-memory, no_autoflush, never
+    # committed) so surplus/deficit classification and the netting solver — all of
+    # which re-read these Branch attributes via the session identity map — reflect
+    # the reconciled truth (~33B surplus) instead of the stale ~50B snapshot.
+    with db_session.no_autoflush:
+        branches = _load_branches(db_session)
+        data_source = "reconciled" if apply_reconciled_to_orm(db_session, branches) else "snapshot"
+        return _build_netting_summary(db_session, branches, data_source)
+
+
+def _build_netting_summary(
+    db_session: Session, branches: List[Branch], data_source: str = "snapshot"
+) -> Dict[str, Any]:
     surplus, deficit, hubs = _classify_branches(branches)
 
     total_surplus_amount = sum(b.idle_cash or 0 for b in surplus)
@@ -999,6 +1013,7 @@ def get_netting_network_summary(db_session: Session) -> Dict[str, Any]:
         "top_deficit_branches": top_deficit,
         "city_heatmap": heatmap,
         "city_summary": netting_result.get("city_summary", {}),
+        "data_source": data_source,
     }
 
 
@@ -1009,7 +1024,11 @@ def get_city_heatmap_data(db_session: Session) -> List[Dict[str, Any]]:
     Returns a list of dicts with city name, centroid lat/lng,
     surplus, deficit, net position, branch count, and netting potential.
     """
-    branches = _load_branches(db_session)
+    from app.core.reconciled import apply_reconciled_to_orm
+
+    with db_session.no_autoflush:
+        branches = _load_branches(db_session)
+        apply_reconciled_to_orm(db_session, branches)  # in-memory, display-only
     city_avg = _city_coords(branches)
 
     # Aggregate per city

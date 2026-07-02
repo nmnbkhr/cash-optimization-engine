@@ -934,6 +934,8 @@ def get_network_summary(db_session: Session) -> Dict:
     """
     Aggregate UC-01 metrics across all branches in the network.
     """
+    from app.core.reconciled import apply_reconciled_to_orm
+
     branches = db_session.query(Branch).all()
 
     if not branches:
@@ -947,6 +949,11 @@ def get_network_summary(db_session: Session) -> Dict:
             "top_idle_branches": [],
             "branch_type_breakdown": {},
         }
+
+    # Reconcile idle/balance to the ledger so UC-01 matches the CFO layer (~33B, not
+    # the stale ~50B snapshot). In-memory only, under no_autoflush, never committed.
+    with db_session.no_autoflush:
+        data_source = "reconciled" if apply_reconciled_to_orm(db_session, branches) else "snapshot"
 
     engine = CashEfficiencyEngine()
     optimizer = VaultOptimizer()
@@ -1002,4 +1009,5 @@ def get_network_summary(db_session: Session) -> Dict:
         "sbp_policy_rate": POLICY_RATE,
         "top_idle_branches": top_idle,
         "branch_type_breakdown": type_breakdown,
+        "data_source": data_source,
     }
