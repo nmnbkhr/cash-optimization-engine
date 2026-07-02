@@ -30,10 +30,13 @@ function cesLabel(score) {
 }
 
 function formatPKR(val) {
+  // Input is RAW PKR (from /api/branches). Fixed: previously mislabeled raw/1e6 as "B".
   if (val == null) return '--'
-  if (Math.abs(val) >= 1e6) return `PKR ${(val / 1e6).toFixed(1)}B`
-  if (Math.abs(val) >= 1e3) return `PKR ${(val / 1e3).toFixed(1)}M`
-  return `PKR ${val.toFixed(0)}M`
+  const a = Math.abs(val)
+  if (a >= 1e9) return `PKR ${(val / 1e9).toFixed(1)}B`
+  if (a >= 1e6) return `PKR ${(val / 1e6).toFixed(1)}M`
+  if (a >= 1e3) return `PKR ${(val / 1e3).toFixed(1)}K`
+  return `PKR ${val.toFixed(0)}`
 }
 
 /* ------------------------------------------------------------------ */

@@ -341,7 +341,9 @@ export default function RegionalView() {
   const avgCES = cityCount > 0
     ? cityBranches.reduce((s, b) => s + (b.cash_efficiency_score || 0), 0) / cityCount
     : 0
-  const totalIdleCash = cityBranches.reduce((s, b) => s + (b.idle_cash || 0), 0)
+  // /api/branches money fields are RAW PKR; formatPKR (and the netting values below) work
+  // in PKR Millions — convert to M here so everything through formatPKR is on one scale.
+  const totalIdleCash = cityBranches.reduce((s, b) => s + (b.idle_cash || 0), 0) / 1e6
 
   const net = nettingData
   const atm = atmData
@@ -669,7 +671,7 @@ export default function RegionalView() {
                           <CESBadge score={b.cash_efficiency_score} />
                         </td>
                         <td style={{ ...tdMono, textAlign: 'right', color: theme.red }}>
-                          {b.idle_cash != null ? formatPKR(b.idle_cash) : '\u2014'}
+                          {b.idle_cash != null ? formatPKR(b.idle_cash / 1e6) : '\u2014'}
                         </td>
                       </tr>
                     ))}
