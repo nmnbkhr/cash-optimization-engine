@@ -6,6 +6,7 @@ snapshot onto `fact_gl_daily`, with every recommendation passing the Cash Consti
 gate before it is surfaced. Mirrors test_uc10_data_source_contract.py.
 """
 import sqlite3
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -17,11 +18,22 @@ from app.core.cash_constitution import CONSTITUTION
 DB_PATH = str(Path(__file__).resolve().parent.parent / "cash_engine.db")
 
 
+def _as_of() -> str:
+    """The reconciled as-of date the engine uses: latest ledger date on/before today."""
+    con = sqlite3.connect(DB_PATH)
+    today = str(date.today())
+    row = con.execute(
+        "SELECT MAX(date) FROM fact_gl_daily WHERE date <= ?", (today,)
+    ).fetchone()
+    con.close()
+    assert row and row[0], "fact_gl_daily has no rows on/before today — reconciled spine missing"
+    return row[0]
+
+
 def _a_reconciled_branch() -> str:
     con = sqlite3.connect(DB_PATH)
     row = con.execute(
-        "SELECT branch_id FROM fact_gl_daily "
-        "WHERE date = (SELECT MAX(date) FROM fact_gl_daily) LIMIT 1"
+        "SELECT branch_id FROM fact_gl_daily WHERE date = ? LIMIT 1", (_as_of(),)
     ).fetchone()
     con.close()
     assert row, "fact_gl_daily is empty — reconciled spine missing"
@@ -41,14 +53,15 @@ def test_vault_recommendation_reads_reconciled_spine(engine):
     bid = _a_reconciled_branch()
     con = sqlite3.connect(DB_PATH)
     close_m = con.execute(
-        "SELECT closing_balance_m FROM fact_gl_daily WHERE branch_id = ? "
-        "ORDER BY date DESC LIMIT 1", (bid,)
+        "SELECT closing_balance_m FROM fact_gl_daily WHERE branch_id = ? AND date <= ? "
+        "ORDER BY date DESC LIMIT 1", (bid, _as_of())
     ).fetchone()[0]
     con.close()
 
     rec = engine.vault_recommendation(bid)
     assert rec.get("data_source") == "reconciled", "flagship must use the reconciled ledger"
     assert rec["decision"]["current_vault"] == round(float(close_m), 1)
+    assert rec["date"] == _as_of(), "recommendation must be dated as-of today, not the horizon end"
 
 
 def test_every_recommendation_passes_constitution_gate(engine):

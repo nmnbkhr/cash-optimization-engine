@@ -77,22 +77,45 @@ class CashOptimizationEngine:
         self.max_vehicle_value = CIT_VEHICLE_MAX
 
     # ══════════════════════════════════════════════════════════
-    # RECONCILED SPINE — latest state from fact_gl_daily
+    # RECONCILED SPINE — current state from fact_gl_daily
     # ══════════════════════════════════════════════════════════
+    _AS_OF_CACHE = None
+
+    def _as_of_date(self) -> str | None:
+        """The reconciled 'as-of' date: the latest ledger date ON OR BEFORE today, so
+        'current' state reflects the present position rather than the end of the forecast
+        horizon (fact_gl_daily runs to 2027). Cached per instance."""
+        if self._AS_OF_CACHE is not None:
+            return self._AS_OF_CACHE
+        today = str(date.today())
+        row = self.db.execute(
+            text("SELECT MAX(date) FROM fact_gl_daily WHERE date <= :t"), {"t": today}
+        ).fetchone()
+        d = row[0] if row and row[0] else None
+        if not d:  # today precedes all data (edge case) — fall back to earliest available
+            row = self.db.execute(text("SELECT MIN(date) FROM fact_gl_daily")).fetchone()
+            d = row[0] if row else None
+        self._AS_OF_CACHE = d
+        return d
+
     def _reconciled_branch_state(self, branch_id: str, lookback: int = 90) -> dict | None:
-        """Latest reconciled state for a branch from fact_gl_daily (the system of record
+        """Current reconciled state for a branch from fact_gl_daily (the system of record
         the T3 forecast + oversight layer read), plus recent withdrawal statistics.
 
-        All amounts already in PKR Millions (fact_gl_daily columns are *_m). Read through
-        the ORM session so it honours DATABASE_URL — unlike the sqlite-path readers. Returns
+        Anchored to _as_of_date() (latest row on/before today), so it reflects the present
+        position, not the forecast horizon. All amounts already in PKR Millions. Returns
         None if the branch has no reconciled rows (caller falls back to the ORM snapshot)."""
+        as_of = self._as_of_date()
+        if not as_of:
+            return None
         rows = self.db.execute(
             text(
                 "SELECT date, closing_balance_m, idle_cash_m, total_withdrawal_flow_m, "
                 "       total_deposit_flow_m, crr_held_m, crr_required_m "
-                "FROM fact_gl_daily WHERE branch_id = :bid ORDER BY date DESC LIMIT :n"
+                "FROM fact_gl_daily WHERE branch_id = :bid AND date <= :asof "
+                "ORDER BY date DESC LIMIT :n"
             ),
-            {"bid": branch_id, "n": lookback},
+            {"bid": branch_id, "asof": as_of, "n": lookback},
         ).fetchall()
         if not rows:
             return None
@@ -126,8 +149,7 @@ class CashOptimizationEngine:
         This is the network-wide analogue of _reconciled_branch_state — one bulk pair of
         queries (~1,532 rows) instead of a per-branch scan. All amounts already in PKR M.
         Cached on the instance so the consolidated views don't re-query per sub-report."""
-        row = self.db.execute(text("SELECT MAX(date) FROM fact_gl_daily")).fetchone()
-        as_of = row[0] if row else None
+        as_of = self._as_of_date()
         if not as_of:
             return {}, None
         cache_key = (as_of, lookback)
@@ -150,7 +172,7 @@ class CashOptimizationEngine:
             text(
                 "SELECT branch_id, AVG(total_withdrawal_flow_m) AS avg_wd, "
                 "       AVG(total_deposit_flow_m) AS avg_dep "
-                "FROM fact_gl_daily WHERE date > date(:d, :off) GROUP BY branch_id"
+                "FROM fact_gl_daily WHERE date > date(:d, :off) AND date <= :d GROUP BY branch_id"
             ),
             {"d": as_of, "off": f"-{lookback} days"},
         ).fetchall()
@@ -186,9 +208,8 @@ class CashOptimizationEngine:
 
     def _reconciled_network_costs(self, days: int = 30) -> dict | None:
         """Trailing-`days` network cost pools from fact_gl_daily (real ABC costing), PKR M.
-        Returns None if the ledger is empty (caller falls back to estimated costs)."""
-        row = self.db.execute(text("SELECT MAX(date) FROM fact_gl_daily")).fetchone()
-        as_of = row[0] if row else None
+        Anchored to _as_of_date(). Returns None if the ledger is empty (caller falls back)."""
+        as_of = self._as_of_date()
         if not as_of:
             return None
         r = self.db.execute(
@@ -196,7 +217,7 @@ class CashOptimizationEngine:
                 "SELECT SUM(personnel_cost_m) p, SUM(premises_cost_m) pr, "
                 "       SUM(cash_handling_cost_m) ch, SUM(cit_cost_m) cit, "
                 "       SUM(insurance_cost_m) ins, SUM(direct_cost_m) d, SUM(other_cost_m) o "
-                "FROM fact_gl_daily WHERE date > date(:d, :off)"
+                "FROM fact_gl_daily WHERE date > date(:d, :off) AND date <= :d"
             ),
             {"d": as_of, "off": f"-{days} days"},
         ).fetchone()
@@ -584,12 +605,14 @@ class CashOptimizationEngine:
         # Reconciled spine: network CRR is the sum of per-branch crr_held/crr_required in
         # fact_gl_daily. Deposit base is implied by required/crr_rate. Fallback to the legacy
         # (and now stale) crr_positions table only if the ledger is empty.
+        _as_of = self._as_of_date()
         series = self.db.execute(
             text(
                 "SELECT date, SUM(crr_held_m) held, SUM(crr_required_m) req "
-                "FROM fact_gl_daily GROUP BY date ORDER BY date DESC LIMIT 7"
-            )
-        ).fetchall()
+                "FROM fact_gl_daily WHERE date <= :asof GROUP BY date ORDER BY date DESC LIMIT 7"
+            ),
+            {"asof": _as_of},
+        ).fetchall() if _as_of else []
 
         if series:
             data_source = "reconciled"
