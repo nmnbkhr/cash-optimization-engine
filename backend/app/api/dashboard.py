@@ -195,18 +195,21 @@ async def executive_summary(db: Session = Depends(get_db)):
     except Exception as e:
         logger.warning("UC09 summary failed: %s", e)
 
-    # --- UC10: P&L Cost Optimization ---
+    # --- UC10: P&L Cost Optimization (reconciled ledger — single source of truth) ---
     try:
-        from app.services.uc10_pnl_attribution import get_pnl_summary
+        from app.services.uc10_pnl_reconciled import get_pnl_summary
         pnl = get_pnl_summary(db)
-        total_benefits = pnl.get("total_benefits", 0)
+        # UC-10 is a cost-attribution lens; its genuine value lever is the idle-cash
+        # deployment opportunity (freed idle × KIBOR), not fabricated "benefits" (=0).
+        # net_cash_cost is already in PKR M — no /1e6.
+        deployment_opp = pnl.get("deployment_opportunity_m", 0)
         net_cost = pnl.get("net_cash_cost", 0)
         uc_results.append({
             "uc": "UC-10", "title": "Cash P&L Attribution",
-            "savings": round(total_benefits, 2),
-            "metric_label": "Total Income & Digital Savings",
-            "detail": f"Net cash cost: {round(net_cost / 1e6, 0)} PKR M",
-            "strategy": "ABC costing + transfer pricing tournament",
+            "savings": round(deployment_opp, 2),
+            "metric_label": "Idle-Cash Deployment Opportunity",
+            "detail": f"Net cash cost: {round(net_cost, 0)} PKR M",
+            "strategy": "ABC costing (reconciled ledger) + transfer pricing",
             "color": "#8b5cf6",
         })
     except Exception as e:

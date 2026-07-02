@@ -16,7 +16,9 @@ SBP Regulatory Context:
 import math
 from datetime import date
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
+
+from app.core.cash_constitution import CONSTITUTION
 
 from app.core.constants import (
     POLICY_RATE, OVERNIGHT_REPO_RATE,
@@ -75,6 +77,41 @@ class CashOptimizationEngine:
         self.max_vehicle_value = CIT_VEHICLE_MAX
 
     # ══════════════════════════════════════════════════════════
+    # RECONCILED SPINE — latest state from fact_gl_daily
+    # ══════════════════════════════════════════════════════════
+    def _reconciled_branch_state(self, branch_id: str, lookback: int = 90) -> dict | None:
+        """Latest reconciled state for a branch from fact_gl_daily (the system of record
+        the T3 forecast + oversight layer read), plus recent withdrawal statistics.
+
+        All amounts already in PKR Millions (fact_gl_daily columns are *_m). Read through
+        the ORM session so it honours DATABASE_URL — unlike the sqlite-path readers. Returns
+        None if the branch has no reconciled rows (caller falls back to the ORM snapshot)."""
+        rows = self.db.execute(
+            text(
+                "SELECT date, closing_balance_m, idle_cash_m, total_withdrawal_flow_m, "
+                "       total_deposit_flow_m, crr_held_m, crr_required_m "
+                "FROM fact_gl_daily WHERE branch_id = :bid ORDER BY date DESC LIMIT :n"
+            ),
+            {"bid": branch_id, "n": lookback},
+        ).fetchall()
+        if not rows:
+            return None
+        latest = rows[0]
+        wds = [float(r.total_withdrawal_flow_m or 0.0) for r in rows]
+        avg_wd = sum(wds) / len(wds)
+        var = sum((w - avg_wd) ** 2 for w in wds) / len(wds)
+        return {
+            "as_of": latest.date,
+            "closing_balance_m": float(latest.closing_balance_m or 0.0),
+            "idle_cash_m": float(latest.idle_cash_m or 0.0),
+            "avg_daily_withdrawal_m": avg_wd,
+            "std_daily_withdrawal_m": var ** 0.5,
+            "crr_held_m": float(latest.crr_held_m or 0.0),
+            "crr_required_m": float(latest.crr_required_m or 0.0),
+            "lookback_days": len(rows),
+        }
+
+    # ══════════════════════════════════════════════════════════
     # UC-01: VAULT RECOMMENDATION
     # ══════════════════════════════════════════════════════════
 
@@ -83,9 +120,22 @@ class CashOptimizationEngine:
         if not branch:
             return {"error": f"Branch {branch_id} not found"}
 
-        # All in PKR Millions
+        # Reconciled state (system of record) with graceful fallback to the ORM snapshot.
+        recon = self._reconciled_branch_state(branch_id)
+        if recon:
+            data_source = "reconciled"          # fact_gl_daily
+            as_of = recon["as_of"]
+            current = recon["closing_balance_m"]
+            avg_wd = recon["avg_daily_withdrawal_m"]
+        else:
+            data_source = "snapshot"            # legacy ORM Branch snapshot
+            as_of = str(date.today())
+            current = M(branch.current_vault_balance)
+            avg_wd = M(branch.avg_daily_withdrawals)
+
+        # All in PKR Millions. Capacity/optimal-hint come from branch metadata (not in the
+        # daily ledger); current level + demand come from the reconciled spine above.
         capacity = M(branch.vault_capacity)
-        avg_wd = M(branch.avg_daily_withdrawals)
         insurance_limit = capacity * 0.85
         sbp_minimum = max(avg_wd * 0.3, 2.0)
 
@@ -94,8 +144,6 @@ class CashOptimizationEngine:
             optimal = avg_wd * 1.65
         optimal = max(optimal, sbp_minimum)
         optimal = min(optimal, insurance_limit)
-
-        current = M(branch.current_vault_balance)
         delta = round(current - optimal, 2)
         cit_threshold = 5.0
 
@@ -139,12 +187,13 @@ class CashOptimizationEngine:
                 "model": "Historical Average",
             }
 
-        return {
+        rec = {
             "branch_id": branch_id,
             "branch_name": branch.name,
             "city": branch.city,
             "branch_type": branch.branch_type.value if hasattr(branch.branch_type, 'value') else str(branch.branch_type),
-            "date": str(date.today()),
+            "date": as_of,
+            "data_source": data_source,
             "decision": {
                 "recommended_vault": round(optimal, 1),
                 "current_vault": round(current, 1),
@@ -180,6 +229,16 @@ class CashOptimizationEngine:
                 "savings_potential_annual": round(annual_loss, 2),
             },
         }
+
+        # Constitution gate: critique the CURRENT vault state (a branch already over its
+        # insured limit or below operational minimum is a real, flaggable breach). HARD
+        # violations set constitution_status=BLOCKED + auto_flag for the Exceptions queue.
+        plan = {
+            "vault_balance_m": current,
+            "vault_capacity_m": capacity,
+            "vault_min_m": sbp_minimum,
+        }
+        return CONSTITUTION.enforce(plan, rec)
 
     # ══════════════════════════════════════════════════════════
     # UC-02: ATM LOAD ORDERS
