@@ -8,6 +8,9 @@ secrets/
 # ---- Databases / data (the GB problem) ----
 *.db
 *.db.*
+*.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 *.parquet
