@@ -50,6 +50,10 @@ _ARM_COST = {  # fraction of txn value
     "Cashback 1%": 0.010, "Cashback 2%": 0.020, "Fee Waiver": 0.005,
     "Loyalty Points": 0.007, "Cash Voucher": 0.012, "No Incentive": 0.000,
 }
+# Realistic per-transaction incentive ceiling (PKR). Digital cashback/reward programs
+# cap the reward per txn; without this, a 1-2% rate on high-value SME/Corporate
+# transfers implies absurd multi-thousand-rupee incentives per transaction.
+INCENTIVE_CAP_PER_TXN = 100.0
 _ARM_EFF = {  # base adoption lift
     "Cashback 1%": 0.08, "Cashback 2%": 0.14, "Fee Waiver": 0.06,
     "Loyalty Points": 0.05, "Cash Voucher": 0.10, "No Incentive": 0.00,
@@ -299,7 +303,14 @@ class ROICalculator:
                 cit_red = shifted * CIT_COST_PER_TRIP / 1000 * 365
                 opp_val = shifted * p["atv"] * 0.5 * POLICY_RATE
                 ann_val = cash_sav + cit_red + opp_val
-                ann_cost = _ARM_COST[best_arm] * p["atv"] * p["w"] * 365
+                # Incentive cost must scale with the number of INCENTED transactions
+                # (shifted), the same volume basis as the value side above — not with
+                # the static segment weight p["w"], which omitted the transaction-count
+                # factor and made cost ~1000x too small (ROI blew up to ~524,000%).
+                # Per-txn incentive = rate x txn value, but capped: no bank pays 1-2%
+                # cashback uncapped on a multi-million-rupee transfer.
+                incentive_per_txn = min(_ARM_COST[best_arm] * p["atv"], INCENTIVE_CAP_PER_TXN)
+                ann_cost = incentive_per_txn * shifted * 365
                 roi = _div(ann_val - ann_cost, ann_cost) * 100
                 t_cost += ann_cost
                 t_val += ann_val
