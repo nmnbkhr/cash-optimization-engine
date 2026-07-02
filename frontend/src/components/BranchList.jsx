@@ -82,7 +82,8 @@ export default function BranchList() {
         ) : (
           filtered.map((b) => {
             const isSelected = selectedBranch?.branch_id === b.branch_id
-            const cesScore = b.ces_score ?? 0
+            const cesRaw = b.cash_efficiency_score ?? b.ces_score ?? 0
+            const cesScore = cesRaw <= 1 ? cesRaw * 100 : cesRaw   // stored 0–1, shown as %
             const idleCash = b.idle_cash ?? 0
             return (
               <div

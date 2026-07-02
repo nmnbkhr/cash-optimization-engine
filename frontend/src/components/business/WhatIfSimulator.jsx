@@ -608,7 +608,7 @@ export default function WhatIfSimulator() {
                   color: isDown ? theme.red : theme.green,
                   lineHeight: 1.1,
                 }}>
-                  {d?.annual_change_m > 0 ? '+' : ''}{formatM(d?.annual_change_m)}
+                  {d?.annual_change_m > 0 ? '+' : ''}{formatB(d?.annual_change_m)}
                 </div>
                 <div style={{
                   fontSize: 13,

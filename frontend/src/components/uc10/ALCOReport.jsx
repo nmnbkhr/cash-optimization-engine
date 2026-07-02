@@ -1,5 +1,5 @@
 import { Shield, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react'
-import formatPKR from '../../utils/formatPKR'
+import formatPKR, { formatPKRM } from '../../utils/formatPKR'
 
 const theme = {
   bg: '#0a0e17',
@@ -51,10 +51,10 @@ export default function ALCOReport({ data }) {
   const rawMetrics = data.metrics || []
   const execSummary = data.executive_summary || {}
   const metrics = rawMetrics.length > 0 ? rawMetrics : (Object.keys(execSummary).length > 0 ? [
-    { label: 'Network Branches', value: execSummary.network_branches, suffix: '' },
-    { label: 'Gross Cash Cost', value: execSummary.gross_cash_cost_pkr, suffix: 'PKR' },
-    { label: 'Net Cash Cost', value: execSummary.net_cash_cost_pkr, suffix: 'PKR', color: theme.red },
-    { label: 'Cost Per Branch', value: execSummary.cost_per_branch_pkr, suffix: 'PKR', color: theme.gold },
+    { label: 'Network Branches', value: execSummary.network_branches, suffix: '', count: true },
+    { label: 'Gross Cash Cost', value: execSummary.gross_cash_cost_pkr, suffix: 'PKR', millions: true },
+    { label: 'Net Cash Cost', value: execSummary.net_cash_cost_pkr, suffix: 'PKR', color: theme.red, millions: true },
+    { label: 'Cost Per Branch', value: execSummary.cost_per_branch_pkr, suffix: 'PKR', color: theme.gold, millions: true },
     { label: 'Cost Per Transaction', value: execSummary.cost_per_transaction_pkr, suffix: 'PKR', color: theme.teal },
     { label: 'Idle Cash Ratio', value: execSummary.idle_cash_ratio_pct != null ? `${execSummary.idle_cash_ratio_pct.toFixed(1)}%` : null, suffix: '' },
     { label: 'YoY Change', value: execSummary.yoy_trend?.change_pct != null ? `${execSummary.yoy_trend.change_pct > 0 ? '+' : ''}${execSummary.yoy_trend.change_pct.toFixed(1)}%` : null, suffix: '', color: execSummary.yoy_trend?.change_pct <= 0 ? theme.green : theme.red },
@@ -169,7 +169,9 @@ export default function ALCOReport({ data }) {
                   fontWeight: 700,
                   fontFamily: theme.font,
                 }}>
-                  {typeof m.value === 'number' ? formatPKR(m.value) : typeof m.value === 'object' ? JSON.stringify(m.value) : String(m.value ?? '--')}
+                  {typeof m.value === 'number'
+                    ? (m.count ? m.value.toLocaleString() : m.millions ? formatPKRM(m.value) : formatPKR(m.value))
+                    : typeof m.value === 'object' ? JSON.stringify(m.value) : String(m.value ?? '--')}
                   {m.suffix && (
                     <span style={{ fontSize: '10px', color: theme.textSecondary, marginLeft: '4px' }}>
                       {m.suffix}

@@ -1,4 +1,4 @@
-import formatPKR from '../../utils/formatPKR'
+import { formatPKRM } from '../../utils/formatPKR'
 const theme = {
   bg: '#0a0e17',
   card: '#111827',
@@ -67,7 +67,7 @@ export default function CostTreemap({ data }) {
           fontSize: '10px',
           fontFamily: theme.font,
         }}>
-          Total: {formatPKR(totalCost)} PKR
+          Total: {formatPKRM(totalCost)} PKR
         </div>
       </div>
 
@@ -121,7 +121,7 @@ export default function CostTreemap({ data }) {
                 fontFamily: theme.font,
                 marginBottom: '4px',
               }}>
-                {formatPKR(regionCost)}
+                {formatPKRM(regionCost)}
                 <span style={{ fontSize: '10px', color: theme.textSecondary, marginLeft: '4px' }}>PKR</span>
               </div>
 
@@ -163,7 +163,7 @@ export default function CostTreemap({ data }) {
                         {city.name}
                       </span>
                       <span style={{ color: theme.text, fontSize: '9px', fontFamily: theme.font, fontWeight: 600 }}>
-                        {formatPKR(city.cost ?? city.net_cash_cost)}
+                        {formatPKRM(city.cost ?? city.net_cash_cost)}
                       </span>
                     </div>
                   ))}

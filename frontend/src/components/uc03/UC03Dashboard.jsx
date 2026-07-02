@@ -13,7 +13,7 @@ import CityHeatmap from './CityHeatmap'
 import NettingSavingsChart from './NettingSavingsChart'
 import NettingFlowTable from './NettingFlowTable'
 import AuctionResultsTable from './AuctionResultsTable'
-import formatPKR from '../../utils/formatPKR'
+import formatPKR, { formatPKRM } from '../../utils/formatPKR'
 
 function UC03AIBriefPanel() {
   const [expanded, setExpanded] = useState(false)
@@ -146,8 +146,10 @@ export default function UC03Dashboard() {
     { label: 'Surplus Branches', value: summary.surplus_branches?.toLocaleString() || '--', color: '#22c55e' },
     { label: 'Deficit Branches', value: summary.deficit_branches?.toLocaleString() || '--', color: '#ef4444' },
     { label: 'Nettable Amount', value: summary.nettable_amount ? `PKR ${formatPKR(summary.nettable_amount)}` : '--', color: '#d4a853' },
-    { label: 'Est. Savings', value: (summary.estimated_annual_savings || summary.estimated_savings) ? `PKR ${formatPKR(summary.estimated_annual_savings || summary.estimated_savings)}` : '--', color: '#2dd4bf' },
-    { label: 'Efficiency', value: (summary.netting_efficiency ?? summary.network_efficiency) != null ? `${((summary.netting_efficiency ?? summary.network_efficiency) * 100).toFixed(1)}%` : '--', color: '#3b82f6' },
+    // estimated_savings is returned in PKR Millions by the backend (÷1e6)
+    { label: 'Est. Savings', value: (summary.estimated_annual_savings || summary.estimated_savings) ? `PKR ${formatPKRM(summary.estimated_annual_savings || summary.estimated_savings)}` : '--', color: '#2dd4bf' },
+    // network_efficiency is already a percentage (e.g. 37.07); netting_efficiency (from solver) may be a 0–1 fraction
+    { label: 'Efficiency', value: (() => { const e = summary.netting_efficiency ?? summary.network_efficiency; return e != null ? `${(e <= 1 ? e * 100 : e).toFixed(1)}%` : '--' })(), color: '#3b82f6' },
   ]
 
   return (
@@ -207,7 +209,7 @@ export default function UC03Dashboard() {
               </div>
               <div className="text-center">
                 <p className="text-sm font-bold" style={{ color: '#2dd4bf', fontFamily: "'JetBrains Mono', monospace" }}>
-                  {formatPKR(summary.estimated_annual_savings || summary.estimated_savings)}
+                  {formatPKRM(summary.estimated_annual_savings || summary.estimated_savings)}
                 </p>
                 <p className="text-[10px] mt-0.5" style={{ color: '#8b949e' }}>Annual Savings</p>
               </div>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import formatPKR from '../../utils/formatPKR'
+import formatPKR, { formatPKRM } from '../../utils/formatPKR'
 
 const theme = {
   bg: '#0a0e17',
@@ -166,7 +166,7 @@ export default function BranchRankingTable({ data }) {
                     {typeof (b.branch_type ?? b.type) === 'object' ? JSON.stringify(b.branch_type ?? b.type) : (b.branch_type ?? b.type ?? '--')}
                   </span>
                 </td>
-                <td style={{ ...cellStyle, fontWeight: 600 }}>{formatPKR(b.net_cash_cost)} PKR</td>
+                <td style={{ ...cellStyle, fontWeight: 600 }}>{formatPKRM(b.net_cash_cost)} PKR</td>
                 <td style={{ ...cellStyle, color: theme.textSecondary }}>{formatPKR(b.cost_per_txn ?? b.cost_per_million_txn_value)} PKR</td>
                 <td style={cellStyle}>
                   <span style={{

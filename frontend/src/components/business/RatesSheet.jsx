@@ -448,7 +448,7 @@ export default function RatesSheet() {
               fontFamily: theme.mono,
               color: spread != null && parseFloat(spread) > 0 ? theme.green : theme.orange,
             }}>
-              {spread != null ? `${parseFloat(spread) > 0 ? '+' : ''}${spread} bps` : '\u2014'}
+              {spread != null ? `${parseFloat(spread) > 0 ? '+' : ''}${Math.round(parseFloat(spread) * 100)} bps` : '\u2014'}
             </span>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import DataSourceBadge from '../common/DataSourceBadge'
+import formatPKRraw, { formatPKRM } from '../../utils/formatPKR'
 
 const theme = {
   bg: '#0a0e17',
@@ -18,10 +19,16 @@ const theme = {
   mono: "'JetBrains Mono', monospace",
 }
 
+// net.* values from /api/business/netting are in PKR Millions
 const formatPKR = (val) => {
-  if (val == null) return '\u2014'
-  if (Math.abs(val) >= 1000) return `PKR ${(val / 1000).toFixed(1)} B`
-  return `PKR ${val.toFixed(1)} M`
+  if (val == null || isNaN(val)) return '\u2014'
+  return `PKR ${formatPKRM(val)}`
+}
+
+// branch money fields from /api/branches are RAW PKR
+const fmtRaw = (val) => {
+  if (val == null || isNaN(val)) return '\u2014'
+  return `PKR ${formatPKRraw(val)}`
 }
 
 const formatNum = (val) => {
@@ -341,9 +348,8 @@ export default function RegionalView() {
   const avgCES = cityCount > 0
     ? cityBranches.reduce((s, b) => s + (b.cash_efficiency_score || 0), 0) / cityCount
     : 0
-  // /api/branches money fields are RAW PKR; formatPKR (and the netting values below) work
-  // in PKR Millions — convert to M here so everything through formatPKR is on one scale.
-  const totalIdleCash = cityBranches.reduce((s, b) => s + (b.idle_cash || 0), 0) / 1e6
+  // /api/branches money fields are RAW PKR — sum raw and render via fmtRaw.
+  const totalIdleCash = cityBranches.reduce((s, b) => s + (b.idle_cash || 0), 0)
 
   const net = nettingData
   const atm = atmData
@@ -418,7 +424,7 @@ export default function RegionalView() {
         />
         <KPICard
           label="Total Idle Cash"
-          value={formatPKR(totalIdleCash)}
+          value={fmtRaw(totalIdleCash)}
           sub="Excess vault holdings"
           color={theme.red}
         />
@@ -671,7 +677,7 @@ export default function RegionalView() {
                           <CESBadge score={b.cash_efficiency_score} />
                         </td>
                         <td style={{ ...tdMono, textAlign: 'right', color: theme.red }}>
-                          {b.idle_cash != null ? formatPKR(b.idle_cash / 1e6) : '\u2014'}
+                          {b.idle_cash != null ? fmtRaw(b.idle_cash) : '\u2014'}
                         </td>
                       </tr>
                     ))}

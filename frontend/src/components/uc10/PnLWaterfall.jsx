@@ -1,5 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts'
-import formatPKR from '../../utils/formatPKR'
+import { formatPKRM, formatYAxisM } from '../../utils/formatPKR'
 
 const theme = {
   bg: '#0a0e17',
@@ -28,10 +28,10 @@ function CustomTooltip({ active, payload }) {
     }}>
       <div style={{ color: theme.text, fontWeight: 700, marginBottom: '4px' }}>{d.name}</div>
       <div style={{ color: d.amount >= 0 ? theme.red : theme.green }}>
-        {d.amount >= 0 ? '+' : ''}{formatPKR(d.amount)} PKR
+        {d.amount >= 0 ? '+' : ''}{formatPKRM(d.amount)} PKR
       </div>
       <div style={{ color: theme.textSecondary, marginTop: '2px' }}>
-        Running Total: {formatPKR(d.runningTotal)} PKR
+        Running Total: {formatPKRM(d.runningTotal)} PKR
       </div>
     </div>
   )
@@ -117,7 +117,7 @@ export default function PnLWaterfall({ data }) {
             height={70}
           />
           <YAxis
-            tickFormatter={(v) => formatPKR(v)}
+            tickFormatter={(v) => formatYAxisM(v)}
             tick={{ fill: theme.textSecondary, fontSize: 10, fontFamily: theme.font }}
             axisLine={{ stroke: theme.border }}
             tickLine={false}

@@ -1,5 +1,6 @@
 import { ArrowRight, Network } from 'lucide-react'
-import formatPKR from '../../utils/formatPKR'
+import formatPKR, { formatPKRM } from '../../utils/formatPKR'
+// UC-03 transfers: `amount` is RAW PKR, `cost` is PKR Millions (backend ÷1e6).
 
 export default function NettingFlowTable({ result }) {
   const transfers = result?.optimal_flows || result?.transfers || []
@@ -90,7 +91,7 @@ export default function NettingFlowTable({ result }) {
               className="text-[10px] text-right"
               style={{ color: '#8b949e', fontFamily: "'JetBrains Mono', monospace" }}
             >
-              {formatPKR(t.cost)}
+              {formatPKRM(t.cost)}
             </span>
           </div>
         ))}
@@ -119,7 +120,7 @@ export default function NettingFlowTable({ result }) {
           className="text-right"
           style={{ color: '#d4a853', fontFamily: "'JetBrains Mono', monospace" }}
         >
-          {formatPKR(totalCost)}
+          {formatPKRM(totalCost)}
         </span>
       </div>
     </div>

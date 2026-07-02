@@ -12,7 +12,7 @@ import CostTreemap from './CostTreemap'
 import TransferPricingDash from './TransferPricingDash'
 import ALCOReport from './ALCOReport'
 import DataSourceBadge from '../common/DataSourceBadge'
-import formatPKR from '../../utils/formatPKR'
+import formatPKR, { formatPKRM } from '../../utils/formatPKR'
 
 const theme = {
   bg: '#0a0e17',
@@ -238,7 +238,7 @@ export default function UC10Dashboard() {
       }}>
         <KPICard
           label="Total Cash Cost"
-          value={totalCashCost != null ? formatPKR(totalCashCost) : '--'}
+          value={totalCashCost != null ? formatPKRM(totalCashCost) : '--'}
           suffix="PKR"
           icon={DollarSign}
           color={theme.red}
@@ -249,12 +249,12 @@ export default function UC10Dashboard() {
         />
         <KPICard
           label="Cost / Branch"
-          value={costPerBranch != null ? formatPKR(costPerBranch) : '--'}
+          value={costPerBranch != null ? formatPKRM(costPerBranch) : '--'}
           suffix="PKR"
           icon={Building2}
           color={theme.gold}
           badge={costPerBranch != null
-            ? costPerBranch < 5e6
+            ? costPerBranch < 5
               ? { text: 'EFFICIENT', color: theme.green }
               : { text: 'REVIEW', color: theme.gold }
             : null
@@ -269,7 +269,7 @@ export default function UC10Dashboard() {
         />
         <KPICard
           label="Net Deployment Income"
-          value={netDeploymentIncome != null ? formatPKR(netDeploymentIncome) : '--'}
+          value={netDeploymentIncome != null ? formatPKRM(netDeploymentIncome) : '--'}
           suffix="PKR"
           icon={TrendingUp}
           color={theme.green}

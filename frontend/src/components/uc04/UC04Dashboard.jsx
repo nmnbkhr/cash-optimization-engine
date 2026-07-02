@@ -268,8 +268,12 @@ export default function UC04Dashboard() {
   const cw = s.current_week || {}
   const hist = s.historical || {}
 
-  // Map summary fields from nested structure
-  const currentCRR = cw.avg_crr_ratio_pct ?? s.current_crr_ratio ?? s.crr_weekly_avg_pct
+  // Map summary fields from nested structure.
+  // current_week.avg_crr_ratio_pct is returned as a DECIMAL (0.06 = 6%) despite the "_pct"
+  // name, whereas crr_weekly_avg_pct is already on a percent scale (6.0). Normalise so a
+  // sub-1 value is treated as a fraction and scaled to a percentage.
+  const rawCurrentCRR = cw.avg_crr_ratio_pct ?? s.current_crr_ratio ?? s.crr_weekly_avg_pct
+  const currentCRR = rawCurrentCRR != null ? (rawCurrentCRR <= 1 ? rawCurrentCRR * 100 : rawCurrentCRR) : rawCurrentCRR
   const weeklyAvgCRR = s.crr_weekly_avg_pct ?? cw.avg_crr_ratio_pct ?? s.weekly_avg_crr
   const freedLiq = hist.total_freed_liquidity ?? s.freed_liquidity
   const incomeEarned = hist.total_income_earned ?? s.income_earned

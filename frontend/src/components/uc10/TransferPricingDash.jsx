@@ -1,5 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts'
-import formatPKR from '../../utils/formatPKR'
+import { formatPKRM, formatYAxisM } from '../../utils/formatPKR'
 
 const theme = {
   bg: '#0a0e17',
@@ -28,7 +28,7 @@ function CustomTooltip({ active, payload, label }) {
       <div style={{ color: theme.text, fontWeight: 700, marginBottom: '6px' }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color, marginBottom: '2px' }}>
-          {p.name}: {formatPKR(p.value)} PKR
+          {p.name}: {formatPKRM(p.value)} PKR
         </div>
       ))}
     </div>
@@ -108,7 +108,7 @@ export default function TransferPricingDash({ data }) {
             Capital Charge
           </div>
           <div style={{ color: theme.red, fontSize: '18px', fontWeight: 700, fontFamily: theme.font }}>
-            {formatPKR(totalCharges)}
+            {formatPKRM(totalCharges)}
           </div>
         </div>
         <div style={{
@@ -121,7 +121,7 @@ export default function TransferPricingDash({ data }) {
             Overnight Income
           </div>
           <div style={{ color: theme.green, fontSize: '18px', fontWeight: 700, fontFamily: theme.font }}>
-            {formatPKR(totalIncome)}
+            {formatPKRM(totalIncome)}
           </div>
         </div>
         <div style={{
@@ -134,7 +134,7 @@ export default function TransferPricingDash({ data }) {
             Digital Savings
           </div>
           <div style={{ color: theme.teal, fontSize: '18px', fontWeight: 700, fontFamily: theme.font }}>
-            {formatPKR(totalDigital)}
+            {formatPKRM(totalDigital)}
           </div>
         </div>
         <div style={{
@@ -152,7 +152,7 @@ export default function TransferPricingDash({ data }) {
             fontWeight: 700,
             fontFamily: theme.font,
           }}>
-            {netPosition >= 0 ? '+' : ''}{formatPKR(netPosition)}
+            {netPosition >= 0 ? '+' : ''}{formatPKRM(netPosition)}
           </div>
         </div>
       </div>
@@ -182,7 +182,7 @@ export default function TransferPricingDash({ data }) {
               height={60}
             />
             <YAxis
-              tickFormatter={(v) => formatPKR(v)}
+              tickFormatter={(v) => formatYAxisM(v)}
               tick={{ fill: theme.textSecondary, fontSize: 10, fontFamily: theme.font }}
               axisLine={{ stroke: theme.border }}
               tickLine={false}
@@ -228,7 +228,7 @@ export default function TransferPricingDash({ data }) {
                 fontFamily: theme.font,
                 fontWeight: 700,
               }}>
-                {isPositive ? '+' : ''}{formatPKR(net)}
+                {isPositive ? '+' : ''}{formatPKRM(net)}
               </span>
             </div>
           )

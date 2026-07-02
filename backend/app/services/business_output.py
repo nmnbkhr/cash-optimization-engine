@@ -802,9 +802,14 @@ class CashOptimizationEngine:
         else:
             daily_target = required_weekly_avg
 
+        # Float = room between the 5% weekly-average requirement and what we must
+        # actually hold today (the higher of the 4% daily floor and the running
+        # target to still hit the weekly average), less an intraday safety buffer.
+        # The buffer must SUBTRACT from free — the previous code added it to both
+        # today_hold and free, cancelling out and pinning free to ~0 every day.
         buffer = deposit_base * 0.0015
         today_hold = max(daily_minimum, daily_target) + buffer
-        free = max(0, deposit_base * self.crr_rate - today_hold + buffer)
+        free = max(0, required_weekly_avg - today_hold)
         daily_income = free * (self.kibor / 365)
 
         avg_so_far = cumulative_held / max(days_elapsed, 1)
@@ -1253,7 +1258,11 @@ class CashOptimizationEngine:
             cash_premises = costs["premises_m"]
             cit_handling = costs["cash_handling_m"] + costs["cit_m"]
             other_ops = costs["direct_m"] + costs["other_m"]
-            insurance_carry = costs["insurance_m"]
+            # The ledger's insurance_cost_m column is mis-scaled (~4x real), so recompute
+            # the carry memo from vault held x documented rate x 30 days — the same basis
+            # uc10_pnl_reconciled uses. ~0.015%/day -> ~5.4%/yr, vs the column's ~21%/yr.
+            total_vault_m = sum(s["closing_balance_m"] for s in net_state.values()) if net_state else 0.0
+            insurance_carry = total_vault_m * self.vault_insurance_rate * 30
         else:
             data_source = "snapshot"
             n_branches = len(branches)
@@ -1291,7 +1300,7 @@ class CashOptimizationEngine:
             "net_value_realized": {
                 "monthly": round(net_value, 2),
                 "annual": round(net_value * 12, 1),
-                "formula": "(Idle Cash Freed x KIBOR) - Cash Ops Cost",
+                "formula": "(Idle Cash Freed x KIBOR) - Cash Ops Cost + SBP-BSC Charges Avoided",
                 "kibor_used": f"{self.kibor * 100:.2f}%",
             },
             "key_metrics": {
@@ -1338,8 +1347,14 @@ class CashOptimizationEngine:
         crr_income = crr.get("recommendation", {}).get("expected_income_today", 0) if "error" not in crr else 0
         crr_status = crr.get("risk", {}).get("compliance_status", "N/A") if "error" not in crr else "N/A"
 
+        if "error" in crr:
+            crr_action = "CRR data unavailable"
+        elif crr_deploy:
+            crr_action = f"Deploy PKR {crr_deploy:,.0f}M in overnight KIBOR repo"
+        else:
+            crr_action = "CRR fully committed today — no excess to deploy"
         top_actions = [
-            f"Deploy PKR {crr_deploy:,.0f}M in overnight KIBOR repo" if crr_deploy else "CRR data unavailable",
+            crr_action,
             f"Sweep PKR {nostro['nostro']['total_sweepable']:.0f}M from idle nostro accounts",
             f"Execute {netting['matches_found']} branch netting transfers",
             f"Target PKR {digital['financials']['annual_savings']:.0f}M/yr from digital shift campaign",

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import DataSourceBadge from '../common/DataSourceBadge'
+import { formatPKRM } from '../../utils/formatPKR'
 
 const theme = {
   bg: '#0a0e17',
@@ -17,10 +18,10 @@ const theme = {
   mono: "'JetBrains Mono', monospace",
 }
 
+// All /api/business/consolidated money fields are in PKR Millions.
 const formatPKR = (val) => {
-  if (val == null) return '\u2014'
-  if (Math.abs(val) >= 1000) return `PKR ${(val / 1000).toFixed(1)} B`
-  return `PKR ${val.toFixed(1)} M`
+  if (val == null || isNaN(val)) return '\u2014'
+  return `PKR ${formatPKRM(val)}`
 }
 
 const formatNum = (val) => {

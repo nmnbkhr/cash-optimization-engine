@@ -112,7 +112,7 @@ export default function ExecutiveSummary() {
             {formatPKR(data.total_annual_savings)}
           </div>
           <div style={{ color: theme.textMuted, fontSize: '10px', fontFamily: theme.font, marginTop: '4px' }}>
-            PKR {(data.total_annual_savings / 1e3).toFixed(1)}B annualized
+            PKR {(data.total_annual_savings / 1e9).toFixed(1)}B annualized
           </div>
         </div>
 

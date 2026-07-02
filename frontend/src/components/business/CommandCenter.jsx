@@ -8,7 +8,7 @@ import {
   Zap, RefreshCw, ArrowRight, CheckCircle2, Activity,
   TrendingDown, TrendingUp, Banknote, Shield, Truck,
 } from 'lucide-react'
-import formatPKR from '../../utils/formatPKR'
+import formatPKR, { formatPKRM } from '../../utils/formatPKR'
 
 /* ------------------------------------------------------------------ */
 /*  KPI Card                                                           */
@@ -51,14 +51,14 @@ function OpportunityCard({ opp, onExecute, loading }) {
           <p className="text-sm font-semibold text-gray-200 truncate">{opp.fromName}</p>
           <p className="text-[11px] text-gray-500">{opp.fromCity}</p>
           <p className="text-xs font-mono text-red-400 mt-0.5">
-            Idle: {formatPKR(opp.fromIdle * 1e6)}
+            Idle: {formatPKRM(opp.fromIdle)}
           </p>
         </div>
 
         {/* Arrow + amount + distance */}
         <div className="flex flex-col items-center gap-0.5 px-2 shrink-0">
           <span className="text-lg font-bold font-mono text-amber-400">
-            {formatPKR(opp.amount * 1e6)}
+            {formatPKRM(opp.amount)}
           </span>
           <ArrowRight size={16} className="text-amber-400" />
           <span className="text-[10px] text-gray-500 font-mono">{opp.distanceKm.toFixed(1)} km</span>
@@ -69,7 +69,7 @@ function OpportunityCard({ opp, onExecute, loading }) {
           <p className="text-sm font-semibold text-gray-200 truncate">{opp.toName}</p>
           <p className="text-[11px] text-gray-500">{opp.toCity}</p>
           <p className="text-xs font-mono text-emerald-400 mt-0.5">
-            Shortfall: {formatPKR(opp.toShortfall * 1e6)}
+            Shortfall: {formatPKRM(opp.toShortfall)}
           </p>
         </div>
       </div>
@@ -84,7 +84,7 @@ function OpportunityCard({ opp, onExecute, loading }) {
             CIT: {formatPKR(opp.citPkr)}
           </span>
           <span className="text-emerald-400">
-            KIBOR/yr: {formatPKR(opp.kiborAnnual * 1e6)}
+            KIBOR/yr: {formatPKRM(opp.kiborAnnual)}
           </span>
         </div>
       </div>
@@ -122,13 +122,13 @@ function SuccessToast({ action, onDismiss }) {
             </p>
             <p className="text-xs text-gray-400 mt-1 font-mono">
               {action.fromName || action.from_id} <ArrowRight size={10} className="inline mx-1" /> {action.toName || action.to_id}
-              {' | '}Amount: {formatPKR((action.amount ?? 0) * 1e6)}
+              {' | '}Amount: {formatPKRM(action.amount ?? 0)}
             </p>
             <div className="flex gap-4 mt-1.5 text-[11px] font-mono text-emerald-400/80">
-              {action.idleFreed != null && <span>Idle freed: {formatPKR(action.idleFreed * 1e6)}</span>}
+              {action.idleFreed != null && <span>Idle freed: {formatPKRM(action.idleFreed)}</span>}
               {action.bscPkr != null && <span>BSC: {formatPKR(action.bscPkr)}</span>}
               {action.citPkr != null && <span>CIT: {formatPKR(action.citPkr)}</span>}
-              {action.kiborAnnual != null && <span>KIBOR/yr: {formatPKR(action.kiborAnnual * 1e6)}</span>}
+              {action.kiborAnnual != null && <span>KIBOR/yr: {formatPKRM(action.kiborAnnual)}</span>}
             </div>
             {(action.vaultBefore != null || action.vaultAfter != null) && (
               <p className="text-[11px] text-gray-500 mt-1 font-mono">
@@ -181,7 +181,7 @@ function ScatterTooltip({ active, payload }) {
     <div className="rounded-lg p-2.5 border border-gray-700 bg-gray-900 text-xs">
       <p className="font-bold text-gray-200 mb-0.5">{d.name || d.id}</p>
       <p className="text-gray-400">{d.city}</p>
-      <p className="font-mono text-amber-400">Idle: {formatPKR(d.idle * 1e6)}</p>
+      <p className="font-mono text-amber-400">Idle: {formatPKRM(d.idle)}</p>
       <p className="font-mono text-gray-400">CES: {d.ces?.toFixed(1)}</p>
     </div>
   )
@@ -363,16 +363,16 @@ function AuditLog({ log }) {
                 <td className="py-2 pr-3">{entry.fromName || entry.from_id}</td>
                 <td className="py-2 pr-3">{entry.toName || entry.to_id}</td>
                 <td className="py-2 pr-3 text-right text-amber-400">
-                  {formatPKR((entry.amount ?? 0) * 1e6)}
+                  {formatPKRM(entry.amount ?? 0)}
                 </td>
                 <td className="py-2 pr-3 text-right text-emerald-400">
-                  {entry.idleFreed != null ? formatPKR(entry.idleFreed * 1e6) : '--'}
+                  {entry.idleFreed != null ? formatPKRM(entry.idleFreed) : '--'}
                 </td>
                 <td className="py-2 pr-3 text-right text-emerald-400">
                   {entry.bscPkr != null ? formatPKR(entry.bscPkr) : '--'}
                 </td>
                 <td className="py-2 text-right text-emerald-400">
-                  {entry.kiborAnnual != null ? formatPKR(entry.kiborAnnual * 1e6) : '--'}
+                  {entry.kiborAnnual != null ? formatPKRM(entry.kiborAnnual) : '--'}
                 </td>
               </tr>
             ))}
@@ -497,14 +497,14 @@ export default function CommandCenter() {
         <KPICard
           icon={Banknote}
           label="Total Idle Cash"
-          value={kpis ? formatPKR(kpis.currentIdle * 1e6) : '--'}
+          value={kpis ? formatPKRM(kpis.currentIdle) : '--'}
           delta={kpis?.idleFreed ? -kpis.idleFreed : null}
           deltaLabel="M freed"
         />
         <KPICard
           icon={TrendingDown}
           label="Annual KIBOR Loss"
-          value={kpis ? formatPKR(kpis.annualLoss * 1e6) : '--'}
+          value={kpis ? formatPKRM(kpis.annualLoss) : '--'}
           delta={kpis?.annualSaved ? kpis.annualSaved : null}
           deltaLabel="M saved"
         />
@@ -556,7 +556,7 @@ export default function CommandCenter() {
                 </span>
               </div>
               <span className="text-xs font-mono text-amber-400">
-                Nettable: {formatPKR(nettableTotal * 1e6)}
+                Nettable: {formatPKRM(nettableTotal)}
               </span>
             </div>
 

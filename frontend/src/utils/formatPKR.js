@@ -14,6 +14,24 @@ export default function formatPKR(val) {
 }
 
 /**
+ * Format a PKR value that is ALREADY expressed in Millions.
+ * All /api/business/* endpoints return money in PKR Millions (e.g. 146299 = 146.3 B).
+ * Use this on business pages; use formatPKR() only for raw-PKR fields (/api/branches, UC APIs).
+ */
+export function formatPKRM(millions) {
+  if (millions == null || isNaN(millions)) return '--'
+  return formatPKR(millions * 1e6)
+}
+
+/**
+ * Format a chart Y-axis value that is ALREADY expressed in Millions.
+ */
+export function formatYAxisM(millions) {
+  if (millions == null || isNaN(millions)) return ''
+  return formatYAxis(millions * 1e6)
+}
+
+/**
  * Format Y-axis values for charts.
  */
 export function formatYAxis(v) {

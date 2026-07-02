@@ -6,6 +6,20 @@ from app.database import get_db
 
 router = APIRouter(prefix="/api", tags=["branches"])
 
+# 85% of vault capacity = insurance limit. The seed/data-generator precomputed
+# optimal_vault_balance with no such clamp, so ~24% of branches carried optimal
+# targets ABOVE physical capacity. Clamp to the same insurance limit the business
+# layer (business_output._branch_optimal) uses so both layers agree.
+INSURANCE_LIMIT_PCT = 0.85
+
+
+def _clamp_optimal(optimal, capacity):
+    if optimal is None:
+        return optimal
+    if capacity is None:
+        return optimal
+    return min(float(optimal), INSURANCE_LIMIT_PCT * float(capacity))
+
 
 def _reconciled_balances(db: Session, branch_ids=None) -> dict:
     """Latest reconciled (closing_balance, idle_cash) per branch from fact_gl_daily, in
@@ -54,13 +68,14 @@ async def list_branches(
         r = recon.get(b.branch_id)
         current = r[0] if r else b.current_vault_balance
         idle = r[1] if r else b.idle_cash
+        optimal = _clamp_optimal(b.optimal_vault_balance, b.vault_capacity)
         out.append({
             "id": b.id, "branch_id": b.branch_id, "name": b.name,
             "city": b.city, "region": b.region,
             "branch_type": b.branch_type.value if hasattr(b.branch_type, 'value') else b.branch_type,
             "vault_capacity": b.vault_capacity,
             "current_vault_balance": current,
-            "optimal_vault_balance": b.optimal_vault_balance,
+            "optimal_vault_balance": optimal,
             "idle_cash": idle,
             "cash_efficiency_score": b.cash_efficiency_score,
             "daily_transactions": b.daily_transactions,
@@ -101,7 +116,7 @@ async def get_branch(branch_id: str, db: Session = Depends(get_db)):
         "avg_daily_deposits": branch.avg_daily_deposits,
         "avg_daily_withdrawals": branch.avg_daily_withdrawals,
         "current_vault_balance": current,
-        "optimal_vault_balance": branch.optimal_vault_balance,
+        "optimal_vault_balance": _clamp_optimal(branch.optimal_vault_balance, branch.vault_capacity),
         "idle_cash": idle,
         "data_source": "reconciled" if r else "snapshot",
         "cash_efficiency_score": branch.cash_efficiency_score,
