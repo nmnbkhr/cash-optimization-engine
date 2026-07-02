@@ -67,3 +67,30 @@ def test_constitution_blocks_a_hard_breach():
     )
     assert gated["constitution_status"] == "BLOCKED"
     assert gated["auto_flag"] is True
+
+
+def test_whole_layer_runs_on_reconciled_ledger(engine):
+    """Every network-scanning prescriptive method reports data_source == 'reconciled'
+    when fact_gl_daily is populated — guards the full migration off the ORM snapshot."""
+    bid = _a_reconciled_branch()
+    checks = {
+        "netting": engine.netting_opportunities("Karachi"),
+        "crr": engine.crr_deployment(),
+        "denomination": engine.denomination_plan(bid),
+        "cit": engine.cit_route_sheet("Karachi"),
+        "digital": engine.digital_shift_report(),
+        "value_realized": engine.value_realized_report(),
+    }
+    for name, out in checks.items():
+        assert out.get("data_source") == "reconciled", f"{name} fell back off the reconciled spine"
+    # consolidated nests its source under bank_snapshot
+    assert engine.consolidated_dashboard()["bank_snapshot"]["data_source"] == "reconciled"
+
+
+def test_value_realized_uses_real_cost_pools(engine):
+    """UC-10 costs come from the ledger's ABC pools, not the fabricated branch-count
+    estimate, and vault insurance is broken out as a memo line (not in ops cost)."""
+    v = engine.value_realized_report()
+    assert "vault_insurance_carry_memo" in v["costs"]
+    # Real handling costs are far below the old n_branches*constant (~383M) estimate.
+    assert v["costs"]["total_cash_ops_cost"] < 200.0
