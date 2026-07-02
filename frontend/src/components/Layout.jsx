@@ -36,6 +36,10 @@ import CDMPlan from './business/CDMPlan'
 import IECHub from './business/IECHub'
 import ComplianceMonitor from './business/ComplianceMonitor'
 import SeasonalPrep from './business/SeasonalPrep'
+import ExceptionsQueue from './business/ExceptionsQueue'
+import DataHealth from './business/DataHealth'
+import SchemaBrowser from './business/SchemaBrowser'
+import { UC_DATA_STATUS } from '../data/ucDataStatus'
 
 /* ─── Icon lookup for nav config ─── */
 const ICONS = {
@@ -69,6 +73,7 @@ const NAV_CONFIG = [
     group: null,
     items: [
       { id: 'biz-command', label: 'Command Center', icon: 'Zap', roles: '*' },
+      { id: 'biz-exceptions', label: 'Exceptions Queue', icon: 'ShieldCheck', roles: '*' },
       { id: 'biz-alerts', label: 'Alerts', icon: 'Bell', roles: '*', badge: true },
     ],
   },
@@ -124,11 +129,13 @@ const NAV_CONFIG = [
     items: [
       { id: 'biz-compliance', label: 'Compliance Monitor', icon: 'Shield', roles: ['SUPERUSER', 'COMPLIANCE', 'CFO'] },
       { id: 'biz-recon', label: 'Data Reconciliation', icon: 'ShieldCheck', roles: ['SUPERUSER', 'COMPLIANCE'] },
+      { id: 'biz-datahealth', label: 'Data Health & Lineage', icon: 'Activity', roles: ['SUPERUSER', 'COMPLIANCE', 'CFO', 'TREASURY'] },
+      { id: 'biz-schema', label: 'Schema Browser', icon: 'Grid3x3', roles: ['SUPERUSER', 'COMPLIANCE', 'TREASURY'] },
     ],
   },
   {
     group: 'technical',
-    label: 'Technical',
+    label: 'Technical · Methodology',
     roles: ['SUPERUSER'],
     items: [
       { id: 'catalog', label: 'Use Case Catalog', icon: 'LayoutGrid', roles: ['SUPERUSER'] },
@@ -155,6 +162,7 @@ const HEADER_TITLES = {
   'biz-treasury': 'Treasury Desk',
   'biz-regional': 'Regional View',
   'biz-command': 'Command Center',
+  'biz-exceptions': 'Exceptions Queue — Human-in-the-Loop Oversight',
   'biz-forecast': 'Forecast Dashboard',
   'biz-pulse': 'Cash Pulse',
   'biz-heatmap': 'Vault Health Heatmap',
@@ -173,6 +181,8 @@ const HEADER_TITLES = {
   'biz-iec': 'IEC Swap Hub',
   'biz-compliance': 'CMS Compliance',
   'biz-seasonal': 'Seasonal Peak Preparation',
+  'biz-datahealth': 'Data Health & Lineage',
+  'biz-schema': 'Database Schema Browser',
 }
 
 /* ─── Visibility helper ─── */
@@ -478,6 +488,22 @@ export default function Layout() {
                 <span className="text-xs" style={{ color: '#6b7280' }}>
                   {activeUC.subtitle}
                 </span>
+                {UC_DATA_STATUS[currentUC] && (
+                  <span
+                    title={`Data provenance: ${UC_DATA_STATUS[currentUC].tier}`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      fontSize: 10, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                      color: UC_DATA_STATUS[currentUC].color,
+                      background: UC_DATA_STATUS[currentUC].color + '18',
+                      border: `1px solid ${UC_DATA_STATUS[currentUC].color}44`,
+                      borderRadius: 5, padding: '2px 8px', textTransform: 'uppercase',
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: UC_DATA_STATUS[currentUC].color }} />
+                    {UC_DATA_STATUS[currentUC].label}
+                  </span>
+                )}
               </div>
             ) : (
               <span className="text-sm font-semibold" style={{ color: '#e8eaed' }}>
@@ -545,6 +571,7 @@ export default function Layout() {
             : currentUC === 'biz-treasury' ? <TreasuryView />
             : currentUC === 'biz-regional' ? <RegionalView />
             : currentUC === 'biz-command' ? <CommandCenter />
+            : currentUC === 'biz-exceptions' ? <ExceptionsQueue />
             : currentUC === 'biz-forecast' ? <ForecastDashboard />
             : currentUC === 'biz-pulse' ? <CashPulse />
             : currentUC === 'biz-heatmap' ? <VaultHeatmap />
@@ -563,6 +590,8 @@ export default function Layout() {
             : currentUC === 'biz-iec' ? <IECHub />
             : currentUC === 'biz-compliance' ? <ComplianceMonitor />
             : currentUC === 'biz-seasonal' ? <SeasonalPrep />
+            : currentUC === 'biz-datahealth' ? <DataHealth />
+            : currentUC === 'biz-schema' ? <SchemaBrowser />
             : <UCDetail />}
         </div>
       </main>

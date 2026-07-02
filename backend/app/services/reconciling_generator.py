@@ -4,11 +4,24 @@ Reconciling Synthetic Data Generator for UBL Cash Optimization Engine.
 Reads existing branch data from SQLite and generates daily GL and
 transaction-level detail that EXACTLY reconciles back to branch totals.
 
-Reconciliation rule:
-    branches.avg_daily_deposits * 30 days
-        == sum(fact_gl_daily.total_deposit_flow_m)  per branch  (PKR M)
-    fact_gl_daily.total_deposit_flow_m per branch-day
-        == sum(fact_transactions.amount_m WHERE txn_type='cash_in')  per branch-day
+Date range: 2024-01-01 .. 2027-12-31 (1,461 market days).
+
+Vault ledger identity (per branch-day, PKR M):
+    closing = opening + cash_in - cash_out + cit_in - cit_out
+    opening[t+1] = closing[t]          # continuous chain, no unexplained jumps
+    closing is bounded [floor, cap] and never negative
+    CIT replenishment fires within-day and is logged as cit_in/cit_out ledger rows
+fact_gl_daily carries cit_in_m / cit_out_m for the CIT legs.
+
+All 8 reconciliation checks must tie (see verify_sql):
+    1. per-branch deposit total  == branches.avg_daily_deposits * n_days
+    2. sum(cash_in)  per branch-day == fact_gl_daily.total_deposit_flow_m
+    3. sum(cash_out) per branch-day == fact_gl_daily.total_withdrawal_flow_m
+    4. sum(cit_in)   per branch-day == fact_gl_daily.cit_in_m
+    5. sum(cit_out)  per branch-day == fact_gl_daily.cit_out_m
+    6. ledger identity (open + flows + CIT = close)
+    7. vault continuity (opening[t+1] == closing[t])
+    8. closing balance non-negative
 
 Uses Dirichlet distribution to split parent totals into exactly-summing
 children (np.random.dirichlet produces N weights summing to 1.0; multiply
@@ -26,6 +39,8 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+
+from app.core import pk_calendar
 
 # ---------------------------------------------------------------------------
 # SBP rate loader — graceful fallback
@@ -70,6 +85,36 @@ def _load_sbp_rates() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# CALIBRATION CONSTANTS — deterministic event LEVELS (mean multiplier vs a
+# normal day). These set the CENTRAL level of demand; stochastic noise
+# (NOISE_SIGMA) adds only low-variance jitter on top. The realized per-flag
+# MEAN tracks these levels (not a fat-tail artifact).
+#
+# TODO(Phase 5): CALIBRATE these against SBP Currency-in-Circulation. For now
+# they are explicit DESIGN TARGETS, not fitted values.
+# ---------------------------------------------------------------------------
+TARGET_LEVEL = {            # withdrawal cash-out level vs normal day
+    "pre_eid_fitr": 3.0,    # central level, NOT a peak
+    "pre_eid_adha": 2.2,
+    "salary_window": 2.0,
+    "ramadan": 1.5,
+    "normal": 1.0,
+}
+DEPOSIT_LEVEL = {           # deposit cash-in level vs normal day (milder drivers)
+    "post_eid": 1.5,
+    "month_end": 1.4,
+    "ramadan": 1.3,
+    "salary_window": 1.2,
+    "normal": 1.0,
+}
+COMPOSED_LEVEL_CAP = 3.5    # cap on the composed LEVEL when flags co-occur (withdrawals)
+DEPOSIT_LEVEL_CAP = 2.5     # cap on the composed deposit level
+NOISE_SIGMA = 0.15          # lognormal sigma for per-day jitter (chosen via dry_run_levels:
+                            # thinnest tail with normal-baseline pre-Eid ~3.0-3.2, p99 ~4.0, 0% clamp)
+CLAMP_FACTOR = 5.0          # safety-net clamp: per-day flow <= this x trailing median
+
+
+# ---------------------------------------------------------------------------
 # Main generator class
 # ---------------------------------------------------------------------------
 
@@ -82,14 +127,21 @@ class ReconcilingDataGenerator:
     def __init__(
         self,
         db_path: str,
-        n_days: int = 30,
+        start: str = "2024-01-01",
+        end: str = "2027-12-31",
         n_customers: int = 10_000,
         seed: int = 42,
+        txn_per_branch_day: int = 8,
     ):
         self.db_path = db_path
-        self.n_days = n_days
         self.n_customers = n_customers
         self.rng = np.random.default_rng(seed)
+        # Cap on customer cash_in+cash_out transactions generated per branch-day
+        # (keeps fact_transactions tractable over the full calendar; the tie to
+        # opening/closing holds at any sampling rate).
+        self.txn_per_branch_day = txn_per_branch_day
+        self.noise_sigma = NOISE_SIGMA
+        self.clamp_binds = {"withdrawal": 0, "deposit": 0, "branch_days": 0}
 
         # ------------------------------------------------------------------
         # Load branches from SQLite
@@ -98,6 +150,7 @@ class ReconcilingDataGenerator:
         self.branches = pd.read_sql_query(
             """
             SELECT branch_id,
+                   branch_type,
                    avg_daily_deposits,
                    avg_daily_withdrawals,
                    current_vault_balance,
@@ -131,13 +184,23 @@ class ReconcilingDataGenerator:
         self.anchor_deposits_pkr = self.branches["avg_daily_deposits"].values.copy()
         self.anchor_withdrawals_pkr = self.branches["avg_daily_withdrawals"].values.copy()
 
-        # Pre-generate customer IDs
-        self.customer_ids = [f"CUST-{i:06d}" for i in range(1, n_customers + 1)]
+        # Pre-generate customer IDs (numpy array for vectorized sampling)
+        self.customer_ids = np.array(
+            [f"CUST-{i:06d}" for i in range(1, n_customers + 1)]
+        )
 
-        # Date range: most recent n_days ending yesterday
-        self.end_date = date.today() - timedelta(days=1)
-        self.start_date = self.end_date - timedelta(days=n_days - 1)
+        # Date range (inclusive). Defaults to the full pk_calendar horizon.
+        self.start_date = date.fromisoformat(start)
+        self.end_date = date.fromisoformat(end)
         self.dates = pd.date_range(self.start_date, self.end_date, freq="D")
+        self.n_days = len(self.dates)
+
+        # Dates flagged as peak cash-out events (Eid surge etc.) for is_peak_event
+        self._peak_dates = {
+            dt.date().isoformat()
+            for dt in self.dates
+            if pk_calendar.withdrawal_demand_multiplier(dt.date()) >= 1.5
+        }
 
     # ======================================================================
     # dim_market
@@ -152,31 +215,47 @@ class ReconcilingDataGenerator:
         base = _load_sbp_rates()
         rows = []
 
-        for i, dt in enumerate(self.dates):
+        # Mean-reverting random walks for each rate/FX series. The previous
+        # `drift * i` formulation exploded over long horizons (e.g. 1461 days);
+        # an Ornstein-Uhlenbeck-style walk keeps the series in a sane band.
+        walk_keys = [
+            "kibor_overnight", "kibor_3m", "kibor_6m", "tbill_3m_yield",
+            "usd_pkr", "eur_pkr", "gbp_pkr", "aed_pkr", "sar_pkr", "cpi_yoy",
+        ]
+        step_std = {
+            "kibor_overnight": 0.015, "kibor_3m": 0.012, "kibor_6m": 0.010,
+            "tbill_3m_yield": 0.010, "usd_pkr": 0.10, "eur_pkr": 0.14,
+            "gbp_pkr": 0.16, "aed_pkr": 0.03, "sar_pkr": 0.03, "cpi_yoy": 0.03,
+        }
+        level = {k: base[k] for k in walk_keys}
+        theta = 0.02  # reversion strength toward base level
+
+        for dt in self.dates:
             d = dt.date()
             dow = dt.dayofweek  # Monday=0 ... Sunday=6
 
-            # Small cumulative drift (rates wander +/- a few bps)
-            drift = self.rng.normal(0, 0.02)  # 2 bps daily std
+            for k in walk_keys:
+                level[k] += theta * (base[k] - level[k]) + self.rng.normal(0, step_std[k])
 
+            in_ram, _ = pk_calendar.is_ramadan(d)
             row = {
                 "date": d.isoformat(),
-                "kibor_overnight": round(base["kibor_overnight"] + drift * i, 4),
-                "kibor_3m": round(base["kibor_3m"] + drift * i * 0.8, 4),
-                "kibor_6m": round(base["kibor_6m"] + drift * i * 0.6, 4),
+                "kibor_overnight": round(level["kibor_overnight"], 4),
+                "kibor_3m": round(level["kibor_3m"], 4),
+                "kibor_6m": round(level["kibor_6m"], 4),
                 "sbp_policy_rate": base["sbp_policy_rate"],  # policy rate is sticky
-                "tbill_3m_yield": round(base["tbill_3m_yield"] + drift * i * 0.5, 4),
-                "usd_pkr": round(base["usd_pkr"] + self.rng.normal(0, 0.15) * (i + 1) ** 0.3, 2),
-                "eur_pkr": round(base["eur_pkr"] + self.rng.normal(0, 0.20) * (i + 1) ** 0.3, 2),
-                "gbp_pkr": round(base["gbp_pkr"] + self.rng.normal(0, 0.20) * (i + 1) ** 0.3, 2),
-                "aed_pkr": round(base["aed_pkr"] + self.rng.normal(0, 0.04) * (i + 1) ** 0.3, 2),
-                "sar_pkr": round(base["sar_pkr"] + self.rng.normal(0, 0.04) * (i + 1) ** 0.3, 2),
-                "cpi_yoy": round(base["cpi_yoy"] + self.rng.normal(0, 0.05), 2),
-                "holiday_flag": dow == 6,            # Sunday
+                "tbill_3m_yield": round(level["tbill_3m_yield"], 4),
+                "usd_pkr": round(level["usd_pkr"], 2),
+                "eur_pkr": round(level["eur_pkr"], 2),
+                "gbp_pkr": round(level["gbp_pkr"], 2),
+                "aed_pkr": round(level["aed_pkr"], 2),
+                "sar_pkr": round(level["sar_pkr"], 2),
+                "cpi_yoy": round(level["cpi_yoy"], 2),
+                "holiday_flag": pk_calendar.is_bank_holiday(d),
                 "is_friday": dow == 4,
                 "is_salary_day": d.day in (1, 15),
-                "is_eid_window": False,
-                "is_ramadan": False,
+                "is_eid_window": bool(pk_calendar.is_pre_eid_surge(d)),
+                "is_ramadan": bool(in_ram),
             }
             rows.append(row)
 
@@ -188,6 +267,113 @@ class ReconcilingDataGenerator:
     # fact_gl_daily
     # ======================================================================
 
+    # ------------------------------------------------------------------
+    # Deterministic event-level builders (magnitude from TARGET_LEVEL).
+    # pk_calendar provides the FLAGS/shape; magnitude lives here.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _withdrawal_level_array(dates_py):
+        """Deterministic withdrawal level per day: compose TARGET_LEVEL flags
+        multiplicatively, capped at COMPOSED_LEVEL_CAP."""
+        out = np.ones(len(dates_py), dtype=np.float64)
+        for i, d in enumerate(dates_py):
+            f = pk_calendar.calendar_features(d)
+            lev = 1.0
+            if 0 < f["days_to_eid_fitr"] <= pk_calendar.EID_FITR_SURGE_DAYS:
+                lev *= TARGET_LEVEL["pre_eid_fitr"]
+            if 0 < f["days_to_eid_adha"] <= pk_calendar.EID_ADHA_SURGE_DAYS:
+                lev *= TARGET_LEVEL["pre_eid_adha"]
+            if f["is_salary_window"]:
+                lev *= TARGET_LEVEL["salary_window"]
+            if f["is_ramadan"]:
+                lev *= TARGET_LEVEL["ramadan"]
+            out[i] = min(lev, COMPOSED_LEVEL_CAP)
+        return out
+
+    @staticmethod
+    def _deposit_level_array(dates_py):
+        """Deterministic deposit level per day (milder drivers), capped."""
+        out = np.ones(len(dates_py), dtype=np.float64)
+        for i, d in enumerate(dates_py):
+            f = pk_calendar.calendar_features(d)
+            lev = 1.0
+            if f["is_post_holiday"]:
+                lev *= DEPOSIT_LEVEL["post_eid"]
+            if f["is_month_end"]:
+                lev *= DEPOSIT_LEVEL["month_end"]
+            if f["is_ramadan"]:
+                lev *= DEPOSIT_LEVEL["ramadan"]
+            if f["is_salary_window"]:
+                lev *= DEPOSIT_LEVEL["salary_window"]
+            out[i] = min(lev, DEPOSIT_LEVEL_CAP)
+        return out
+
+    @staticmethod
+    def _dow_weights(dows):
+        """Mild intra-week shape (mean 1.0 so it doesn't shift flag means)."""
+        w = np.ones(len(dows), dtype=np.float64)
+        w[dows == 4] = 1.20   # Friday
+        w[dows == 5] = 0.95   # Saturday
+        w[dows == 6] = 0.85   # Sunday
+        return w
+
+    def _daily_flow(self, total, level, dow, sigma):
+        """flow = base * level(d) * noise, normalised so it sums EXACTLY to
+        `total` (no drift). Low-variance lognormal noise (mean ~1)."""
+        noise = self.rng.lognormal(0.0, sigma, len(level))
+        w = level * dow * noise
+        return w / w.sum() * total
+
+    # Event flags that disqualify a day from the NORMAL-day baseline.
+    _NORMAL_EXCLUDE_FLAGS = (
+        "is_salary_window", "is_pre_eid_surge", "is_ramadan",
+        "is_bridge_day", "is_pre_holiday", "is_post_holiday", "is_bank_holiday",
+    )
+
+    @classmethod
+    def _normal_day_mask(cls, dates_py):
+        """True for NORMAL days (no event flag) — used as the multiplier baseline."""
+        out = np.ones(len(dates_py), dtype=bool)
+        for i, d in enumerate(dates_py):
+            f = pk_calendar.calendar_features(d)
+            out[i] = not any(f[k] for k in cls._NORMAL_EXCLUDE_FLAGS)
+        return out
+
+    @staticmethod
+    def _trailing_cap_normal(series, normal_mask, factor, window=90, warmup=14):
+        """Cap array = factor * trailing median of NORMAL days only (prior `window`
+        days, excluding the current day). Requires >=`warmup` normal observations in
+        the window; otherwise no clamp (inf). This baseline is the 'normal day', not
+        the (event-inflated) all-day median."""
+        normal_series = np.where(normal_mask, series, np.nan)
+        med = (pd.Series(normal_series)
+               .shift(1).rolling(window, min_periods=warmup).median().to_numpy())
+        cap = factor * med
+        cap[np.isnan(cap)] = np.inf
+        return cap
+
+    @staticmethod
+    def _waterfill_cap(values, cap, total, max_iter=25, tol=1e-9):
+        """Cap `values` at `cap` and redistribute the clipped excess onto below-cap
+        days (proportional to value) so the series still sums to `total`. Preserves
+        the deposit anchor while removing the spike tail."""
+        x = values.astype(np.float64).copy()
+        for _ in range(max_iter):
+            over = x > cap
+            if not over.any():
+                break
+            excess = float((x[over] - cap[over]).sum())
+            x[over] = cap[over]
+            if excess <= tol:
+                break
+            under = x < cap
+            base = x[under]
+            denom = float(base.sum())
+            if denom <= 0:
+                break
+            x[under] = base + excess * base / denom
+        return x
+
     def generate_fact_gl_daily(self, dim_market: pd.DataFrame) -> pd.DataFrame:
         """
         For each branch and each day, produce one GL row.
@@ -197,24 +383,16 @@ class ReconcilingDataGenerator:
         dates_str = dim_market["date"].values  # array of date strings
         dates_dt = pd.to_datetime(dates_str)
         dows = dates_dt.dayofweek.values        # 0=Mon .. 6=Sun
-        days_of_month = dates_dt.day.values
+        dates_py = [d.date() for d in dates_dt]
 
-        # Pre-compute day-of-week and salary-day weight multipliers
-        dow_weights = np.ones(n_days, dtype=np.float64)
-        for i in range(n_days):
-            if dows[i] == 4:       # Friday
-                dow_weights[i] = 1.2
-            elif dows[i] == 5:     # Saturday
-                dow_weights[i] = 0.5
-            elif dows[i] == 6:     # Sunday
-                dow_weights[i] = 0.4
-
-        salary_weights = np.ones(n_days, dtype=np.float64)
-        for i in range(n_days):
-            if days_of_month[i] in (1, 2, 15, 16):
-                salary_weights[i] = 1.3
-
-        combined_weights = dow_weights * salary_weights  # element-wise
+        # Deterministic per-day LEVEL (magnitude from TARGET_LEVEL) + mild intra-week
+        # shape. pk_calendar supplies the flags; magnitude is the calibration block.
+        # These are the same for every branch — branch identity enters only via the
+        # low-variance noise draw inside _daily_flow (totals stay anchored).
+        dow_weights = self._dow_weights(dows)
+        level_w = self._withdrawal_level_array(dates_py)
+        level_d = self._deposit_level_array(dates_py)
+        normal_mask = self._normal_day_mask(dates_py)   # clamp baseline = normal days
 
         all_rows = []
         n_branches = len(self.branches)
@@ -231,39 +409,62 @@ class ReconcilingDataGenerator:
             total_wth_m = (br["avg_daily_withdrawals"] / 1e6) * n_days
 
             # ---------------------------------------------------------------
-            # 2. Dirichlet base weights + calendar effects
+            # 2. Flow = base * level(d) * noise, normalised to the period total.
+            #    LEVEL is deterministic (TARGET_LEVEL); NOISE is low-variance
+            #    lognormal jitter (mean ~1). This gives a ~3x pre-Eid MEAN with a
+            #    thin tail, instead of a fat-tail Dirichlet whose mean read 3.1.
+            #    Normalisation keeps branch totals anchored exactly (no drift).
             # ---------------------------------------------------------------
-            alpha_dep = np.ones(n_days)
-            raw_dep = self.rng.dirichlet(alpha_dep)    # sums to 1.0
-            adj_dep = raw_dep * combined_weights
-            adj_dep /= adj_dep.sum()                   # re-normalize
-            daily_dep = adj_dep * total_dep_m           # sums exactly to total_dep_m
-
-            alpha_wth = np.ones(n_days)
-            raw_wth = self.rng.dirichlet(alpha_wth)
-            adj_wth = raw_wth * combined_weights
-            adj_wth /= adj_wth.sum()
-            daily_wth = adj_wth * total_wth_m
+            daily_dep = self._daily_flow(total_dep_m, level_d, dow_weights, self.noise_sigma)
+            daily_wth = self._daily_flow(total_wth_m, level_w, dow_weights, self.noise_sigma)
 
             # ---------------------------------------------------------------
-            # 3. Vault chain: opening/closing balances
+            # 2b. Safety-net clamp at CLAMP_FACTOR x trailing-90-day median (prior
+            #     90 days, >=14-day warm-up). With low-variance noise this should
+            #     rarely bind (reported in seed). Withdrawals capped directly;
+            #     the deposit anchor (CHECK 1) preserved by water-filling the
+            #     clipped excess. The vault chain's within-day CIT absorbs the rest.
             # ---------------------------------------------------------------
-            vault_cap_m = br["vault_capacity"] / 1e6
+            cap_w = self._trailing_cap_normal(daily_wth, normal_mask, CLAMP_FACTOR)
+            cap_d = self._trailing_cap_normal(daily_dep, normal_mask, CLAMP_FACTOR)
+            self.clamp_binds["withdrawal"] += int(np.sum(daily_wth > cap_w))
+            self.clamp_binds["deposit"] += int(np.sum(daily_dep > cap_d))
+            self.clamp_binds["branch_days"] += n_days
+            daily_wth = np.minimum(daily_wth, cap_w)
+            daily_dep = self._waterfill_cap(daily_dep, cap_d, total_dep_m)
+
+            # ---------------------------------------------------------------
+            # 3. Vault chain with explicit, reconciled CIT replenishment.
+            #    closing[t] = opening[t] + dep[t] - wth[t] + cit_in[t] - cit_out[t]
+            #    opening[t+1] = closing[t]   (fully continuous)
+            #    CIT fires WITHIN the day to keep the vault in [floor, cap], so
+            #    the closing balance is never negative.
+            # ---------------------------------------------------------------
+            vault_cap_m = max(br["vault_capacity"] / 1e6, 1e-6)
             optimal_m = br["optimal_vault_balance"] / 1e6
+            cap_m = vault_cap_m * 0.95                          # insurance ceiling
+            floor_m = max(0.0, min(optimal_m * 0.15, 0.30 * cap_m))  # operational min
+            # Single restock/drawdown target, kept strictly inside (floor, cap) so
+            # CIT-in and CIT-out are always non-negative even when optimal > capacity.
+            span = cap_m - floor_m
+            target_m = min(max(optimal_m * 0.70, floor_m + 0.10 * span),
+                           floor_m + 0.90 * span)
+
             opening = np.zeros(n_days, dtype=np.float64)
             closing = np.zeros(n_days, dtype=np.float64)
+            cit_in = np.zeros(n_days, dtype=np.float64)
+            cit_out = np.zeros(n_days, dtype=np.float64)
 
-            opening[0] = br["current_vault_balance"] / 1e6
+            opening[0] = min(max(br["current_vault_balance"] / 1e6, floor_m), cap_m)
             for t in range(n_days):
-                closing[t] = opening[t] + daily_dep[t] - daily_wth[t]
+                pre = opening[t] + daily_dep[t] - daily_wth[t]
+                if pre < floor_m:
+                    cit_in[t] = target_m - pre         # restock to target (>0)
+                elif pre > cap_m:
+                    cit_out[t] = pre - target_m        # draw down to target (>0)
+                closing[t] = pre + cit_in[t] - cit_out[t]
                 if t < n_days - 1:
-                    # CIT adjustment: if vault drifts too far, nudge towards optimal
-                    next_open = closing[t]
-                    if next_open < optimal_m * 0.3:
-                        next_open = optimal_m * 0.6  # emergency CIT-in
-                    elif next_open > vault_cap_m * 0.95:
-                        next_open = optimal_m * 0.8  # CIT-out
-                    opening[t + 1] = next_open
+                    opening[t + 1] = closing[t]
 
             # ---------------------------------------------------------------
             # 4. Daily idle cash
@@ -311,6 +512,8 @@ class ReconcilingDataGenerator:
                 "opening_balance_m": np.round(opening, 6),
                 "total_deposit_flow_m": np.round(daily_dep, 6),
                 "total_withdrawal_flow_m": np.round(daily_wth, 6),
+                "cit_in_m": np.round(cit_in, 6),
+                "cit_out_m": np.round(cit_out, 6),
                 "closing_balance_m": np.round(closing, 6),
                 "idle_cash_m": np.round(idle, 6),
                 "crr_required_m": np.round(crr_required, 6),
@@ -342,247 +545,254 @@ class ReconcilingDataGenerator:
         return fact_gl
 
     # ======================================================================
-    # fact_transactions
+    # fact_transactions (vectorised, bounded per branch-day)
     # ======================================================================
 
-    def generate_fact_transactions(self, fact_gl: pd.DataFrame) -> pd.DataFrame:
+    _DEP_CHANNELS = np.array(["counter", "cdm", "transfer"])
+    _DEP_PROBS = [0.60, 0.15, 0.25]
+    _WTH_CHANNELS = np.array(["counter", "atm", "cheque"])
+    _WTH_PROBS = [0.50, 0.35, 0.15]
+
+    @staticmethod
+    def _ids(offset: int, n: int) -> np.ndarray:
+        """Vectorised unique txn ids: T<offset>..T<offset+n-1>."""
+        return np.char.add("T", (offset + np.arange(n)).astype("U12"))
+
+    def _timestamps(self, date_arr: np.ndarray) -> np.ndarray:
+        """Vectorised 'YYYY-MM-DDTHH:MM:SS' with a random banking-hours time."""
+        n = len(date_arr)
+        hh = np.char.zfill(self.rng.integers(8, 17, n).astype("U2"), 2)
+        mm = np.char.zfill(self.rng.integers(0, 60, n).astype("U2"), 2)
+        ts = np.char.add(date_arr.astype("U10"), "T")
+        ts = np.char.add(ts, hh)
+        ts = np.char.add(ts, ":")
+        ts = np.char.add(ts, mm)
+        return np.char.add(ts, ":00")
+
+    @staticmethod
+    def _split_to_flow(counts: np.ndarray, flow: np.ndarray, rng):
+        """Explode each GL row into `counts` children whose amounts sum exactly
+        to that row's `flow`. Returns (group_row_index, amounts)."""
+        group_idx = np.repeat(np.arange(len(counts)), counts)
+        w = rng.random(len(group_idx))
+        starts = np.zeros(len(counts), dtype=np.int64)
+        starts[1:] = np.cumsum(counts)[:-1]
+        gsum = np.add.reduceat(w, starts)
+        gsum[gsum == 0] = 1.0
+        amounts = w / gsum[group_idx] * flow[group_idx]
+        return group_idx, amounts
+
+    def _build_transactions(self, gl: pd.DataFrame, id_offset: int):
+        """Vectorised customer + CIT transactions for a slice of fact_gl_daily.
+
+        cash_in / cash_out tie exactly to the deposit / withdrawal flows;
+        cit_in / cit_out tie to the GL CIT columns. Returns (DataFrame, next_offset).
         """
-        For each (branch_id, date) in fact_gl, generate individual transactions
-        that sum exactly to the GL deposit/withdrawal flows.
-        Samples 10% of daily_transactions to keep row counts manageable.
-        """
-        # Build a lookup: branch_id -> daily_transactions
-        br_txn_map = dict(
-            zip(self.branches["branch_id"], self.branches["daily_transactions"])
-        )
+        br_txn_map = dict(zip(self.branches["branch_id"], self.branches["daily_transactions"]))
 
-        # Channel distributions
-        dep_channels = ["counter", "cdm", "transfer"]
-        dep_channel_probs = [0.60, 0.15, 0.25]
-        wth_channels = ["counter", "atm", "cheque"]
-        wth_channel_probs = [0.50, 0.35, 0.15]
+        bid = gl["branch_id"].to_numpy()
+        dts = gl["date"].to_numpy().astype("U10")
+        dep_flow = gl["total_deposit_flow_m"].to_numpy()
+        wth_flow = gl["total_withdrawal_flow_m"].to_numpy()
+        cit_in_flow = gl["cit_in_m"].to_numpy()
+        cit_out_flow = gl["cit_out_m"].to_numpy()
 
-        all_txns = []
-        total_gl_rows = len(fact_gl)
-        t0 = time.time()
-        batch_count = 0
+        base = np.array([br_txn_map.get(b, 100) for b in bid], dtype=float)
+        n_total = np.clip((base * 0.10).astype(int), 4, self.txn_per_branch_day)
+        n_dep = np.maximum((n_total * 0.45).astype(int), 1)
+        n_wth = np.maximum(n_total - n_dep, 1)
 
-        for _, row in fact_gl.iterrows():
-            bid = row["branch_id"]
-            dt = row["date"]
-            dep_m = row["total_deposit_flow_m"]
-            wth_m = row["total_withdrawal_flow_m"]
+        is_peak_row = np.array([d in self._peak_dates for d in dts])
+        parts = []
+        offset = id_offset
 
-            # Number of transactions (10% sample)
-            base_txns = br_txn_map.get(bid, 100)
-            n_txns = max(int(base_txns * 0.10), 2)
-            n_dep = max(int(n_txns * 0.45), 1)
-            n_wth = max(n_txns - n_dep, 1)
+        # --- customer cash_in (ties to deposit flow) -----------------------
+        gi, amt = self._split_to_flow(n_dep, dep_flow, self.rng)
+        n = len(gi)
+        parts.append(pd.DataFrame({
+            "txn_id": self._ids(offset, n),
+            "timestamp": self._timestamps(dts[gi]),
+            "date": dts[gi],
+            "branch_id": bid[gi],
+            "cust_id": self.rng.choice(self.customer_ids, size=n),
+            "txn_type": "cash_in",
+            "amount_m": np.round(amt, 6),
+            "channel": self.rng.choice(self._DEP_CHANNELS, size=n, p=self._DEP_PROBS),
+            "is_peak_event": is_peak_row[gi],
+            "denomination_hint": None,
+        }))
+        offset += n
 
-            # ---------------------------------------------------------------
-            # Cash-in transactions (Dirichlet split of deposit flow)
-            # ---------------------------------------------------------------
-            if dep_m > 0 and n_dep > 0:
-                dep_weights = self.rng.dirichlet(np.ones(n_dep))
-                dep_amounts = dep_weights * dep_m  # sums exactly to dep_m
+        # --- customer cash_out (ties to withdrawal flow) -------------------
+        gi, amt = self._split_to_flow(n_wth, wth_flow, self.rng)
+        n = len(gi)
+        parts.append(pd.DataFrame({
+            "txn_id": self._ids(offset, n),
+            "timestamp": self._timestamps(dts[gi]),
+            "date": dts[gi],
+            "branch_id": bid[gi],
+            "cust_id": self.rng.choice(self.customer_ids, size=n),
+            "txn_type": "cash_out",
+            "amount_m": np.round(amt, 6),
+            "channel": self.rng.choice(self._WTH_CHANNELS, size=n, p=self._WTH_PROBS),
+            "is_peak_event": is_peak_row[gi],
+            "denomination_hint": None,
+        }))
+        offset += n
 
-                dep_ch = self.rng.choice(dep_channels, size=n_dep, p=dep_channel_probs)
-                dep_custs = self.rng.choice(self.customer_ids, size=n_dep, replace=True)
+        # --- CIT replenishment movements (tie to GL cit columns) -----------
+        for typ, flow in (("cit_in", cit_in_flow), ("cit_out", cit_out_flow)):
+            mask = flow > 0
+            n = int(mask.sum())
+            if n == 0:
+                continue
+            parts.append(pd.DataFrame({
+                "txn_id": self._ids(offset, n),
+                "timestamp": self._timestamps(dts[mask]),
+                "date": dts[mask],
+                "branch_id": bid[mask],
+                "cust_id": "CIT-VENDOR",
+                "txn_type": typ,
+                "amount_m": np.round(flow[mask], 6),
+                "channel": "cit",
+                "is_peak_event": False,
+                "denomination_hint": None,
+            }))
+            offset += n
 
-                for j in range(n_dep):
-                    all_txns.append({
-                        "txn_id": str(uuid.uuid4()),
-                        "timestamp": f"{dt}T{self.rng.integers(8, 17):02d}:{self.rng.integers(0, 60):02d}:00",
-                        "date": dt,
-                        "branch_id": bid,
-                        "cust_id": dep_custs[j],
-                        "txn_type": "cash_in",
-                        "amount_m": round(dep_amounts[j], 6),
-                        "channel": dep_ch[j],
-                        "is_peak_event": False,
-                        "denomination_hint": None,
-                    })
-
-            # ---------------------------------------------------------------
-            # Cash-out transactions (Dirichlet split of withdrawal flow)
-            # ---------------------------------------------------------------
-            if wth_m > 0 and n_wth > 0:
-                wth_weights = self.rng.dirichlet(np.ones(n_wth))
-                wth_amounts = wth_weights * wth_m  # sums exactly to wth_m
-
-                wth_ch = self.rng.choice(wth_channels, size=n_wth, p=wth_channel_probs)
-                wth_custs = self.rng.choice(self.customer_ids, size=n_wth, replace=True)
-
-                for j in range(n_wth):
-                    all_txns.append({
-                        "txn_id": str(uuid.uuid4()),
-                        "timestamp": f"{dt}T{self.rng.integers(8, 17):02d}:{self.rng.integers(0, 60):02d}:00",
-                        "date": dt,
-                        "branch_id": bid,
-                        "cust_id": wth_custs[j],
-                        "txn_type": "cash_out",
-                        "amount_m": round(wth_amounts[j], 6),
-                        "channel": wth_ch[j],
-                        "is_peak_event": False,
-                        "denomination_hint": None,
-                    })
-
-            batch_count += 1
-            if batch_count % 5000 == 0:
-                elapsed = time.time() - t0
-                print(f"  fact_transactions: {batch_count}/{total_gl_rows} GL rows processed ({elapsed:.1f}s)")
-
-        fact_txn = pd.DataFrame(all_txns)
-        elapsed = time.time() - t0
-        print(f"fact_transactions: {len(fact_txn):,} rows in {elapsed:.1f}s")
-        return fact_txn
+        return pd.concat(parts, ignore_index=True), offset
 
     # ======================================================================
-    # Reconciliation verification
+    # Reconciliation verification (SQL-based, runs against the written DB)
     # ======================================================================
 
-    def _verify_reconciliation(
-        self,
-        fact_gl: pd.DataFrame,
-        fact_txn: pd.DataFrame,
-    ) -> bool:
-        """
-        Run 5 reconciliation checks. Returns True if all pass.
-        """
+    def verify_sql(self, conn) -> bool:
+        """Run reconciliation checks directly against the seeded SQLite tables."""
         all_pass = True
-        n_days = self.n_days
 
-        # ------------------------------------------------------------------
-        # CHECK 1: GL avg deposits per branch ~ branch.avg_daily_deposits / 1e6
-        # ------------------------------------------------------------------
-        gl_branch_dep = fact_gl.groupby("branch_id")["total_deposit_flow_m"].sum()
-        branch_expected = self.branches.set_index("branch_id")["avg_daily_deposits"] / 1e6 * n_days
-        diff1 = (gl_branch_dep - branch_expected).abs()
-        max_diff1 = diff1.max()
-        tol1 = 1e-4  # PKR M tolerance (rounding)
-        pass1 = max_diff1 < tol1
-        sym1 = "\u2713" if pass1 else "\u2717"
-        print(f"  {sym1} CHECK 1: GL deposit totals vs branch anchors  (max diff: {max_diff1:.8f} PKR M)")
-        if not pass1:
-            all_pass = False
+        def _check(label, value, tol):
+            nonlocal all_pass
+            ok = value <= tol
+            print(f"  {'✓' if ok else '✗'} {label}  (max |resid|: {value:.8f})")
+            if not ok:
+                all_pass = False
 
-        # ------------------------------------------------------------------
-        # CHECK 2: Txn cash_in sum per branch-day == GL deposit flow
-        # ------------------------------------------------------------------
-        txn_dep = (
-            fact_txn[fact_txn["txn_type"] == "cash_in"]
-            .groupby(["branch_id", "date"])["amount_m"]
-            .sum()
-        )
-        gl_dep = fact_gl.set_index(["branch_id", "date"])["total_deposit_flow_m"]
-        # Align indices
-        common_idx = txn_dep.index.intersection(gl_dep.index)
-        diff2 = (txn_dep.loc[common_idx] - gl_dep.loc[common_idx]).abs()
-        max_diff2 = diff2.max() if len(diff2) > 0 else 0.0
-        tol2 = 1e-4
-        pass2 = max_diff2 < tol2
-        sym2 = "\u2713" if pass2 else "\u2717"
-        print(f"  {sym2} CHECK 2: Txn cash_in sums vs GL deposits       (max diff: {max_diff2:.8f} PKR M)")
-        if not pass2:
-            all_pass = False
+        cur = conn.cursor()
 
-        # ------------------------------------------------------------------
-        # CHECK 3: Txn cash_out sum per branch-day == GL withdrawal flow
-        # ------------------------------------------------------------------
-        txn_wth = (
-            fact_txn[fact_txn["txn_type"] == "cash_out"]
-            .groupby(["branch_id", "date"])["amount_m"]
-            .sum()
-        )
-        gl_wth = fact_gl.set_index(["branch_id", "date"])["total_withdrawal_flow_m"]
-        common_idx3 = txn_wth.index.intersection(gl_wth.index)
-        diff3 = (txn_wth.loc[common_idx3] - gl_wth.loc[common_idx3]).abs()
-        max_diff3 = diff3.max() if len(diff3) > 0 else 0.0
-        tol3 = 1e-4
-        pass3 = max_diff3 < tol3
-        sym3 = "\u2713" if pass3 else "\u2717"
-        print(f"  {sym3} CHECK 3: Txn cash_out sums vs GL withdrawals   (max diff: {max_diff3:.8f} PKR M)")
-        if not pass3:
-            all_pass = False
+        # CHECK 1: per-branch deposit total vs anchor (avg_daily_deposits * n_days)
+        gl_dep = dict(cur.execute(
+            "SELECT branch_id, SUM(total_deposit_flow_m) FROM fact_gl_daily GROUP BY branch_id").fetchall())
+        anchors = dict(zip(self.branches["branch_id"],
+                           self.branches["avg_daily_deposits"] / 1e6 * self.n_days))
+        d1 = max((abs(gl_dep.get(b, 0.0) - exp) for b, exp in anchors.items()), default=0.0)
+        _check("CHECK 1: GL deposit totals vs branch anchors", d1, 1e-3)
 
-        # ------------------------------------------------------------------
-        # CHECK 4: GL monthly interest sum per branch ~ branch anchor
-        # ------------------------------------------------------------------
-        gl_int = fact_gl.groupby("branch_id")["interest_income_m"].sum()
-        br_int_expected = self.branches.set_index("branch_id")["monthly_interest_income"] / 1e6
-        diff4 = (gl_int - br_int_expected).abs()
-        max_diff4 = diff4.max()
-        tol4 = 1e-3  # slightly looser for rounded daily figures
-        pass4 = max_diff4 < tol4
-        sym4 = "\u2713" if pass4 else "\u2717"
-        print(f"  {sym4} CHECK 4: GL interest income vs branch anchors  (max diff: {max_diff4:.8f} PKR M)")
-        if not pass4:
-            all_pass = False
+        # CHECK 2-5: per branch-day txn-type sums == matching GL column
+        for label, typ, col in (
+            ("CHECK 2: cash_in sums vs GL deposit flow", "cash_in", "total_deposit_flow_m"),
+            ("CHECK 3: cash_out sums vs GL withdrawal flow", "cash_out", "total_withdrawal_flow_m"),
+            ("CHECK 4: cit_in sums vs GL cit_in_m", "cit_in", "cit_in_m"),
+            ("CHECK 5: cit_out sums vs GL cit_out_m", "cit_out", "cit_out_m"),
+        ):
+            row = cur.execute(f"""
+                SELECT MAX(ABS(t_sum - g_val)) FROM (
+                    SELECT g.{col} AS g_val, COALESCE(t.s, 0.0) AS t_sum
+                    FROM fact_gl_daily g
+                    LEFT JOIN (
+                        SELECT branch_id, date, SUM(amount_m) AS s
+                        FROM fact_transactions WHERE txn_type = '{typ}'
+                        GROUP BY branch_id, date
+                    ) t ON t.branch_id = g.branch_id AND t.date = g.date
+                )
+            """).fetchone()
+            _check(label, row[0] or 0.0, 1e-4)
 
-        # ------------------------------------------------------------------
-        # CHECK 5: Bank-wide daily totals match
-        # ------------------------------------------------------------------
-        bank_gl_dep = fact_gl["total_deposit_flow_m"].sum()
-        bank_expected_dep = (self.branches["avg_daily_deposits"] / 1e6 * n_days).sum()
-        diff5 = abs(bank_gl_dep - bank_expected_dep)
-        tol5 = 1e-2  # aggregate tolerance
-        pass5 = diff5 < tol5
-        sym5 = "\u2713" if pass5 else "\u2717"
-        print(f"  {sym5} CHECK 5: Bank-wide deposit total               (diff: {diff5:.8f} PKR M)")
-        if not pass5:
+        # CHECK 6: ledger identity closing == opening + dep - wth + cit_in - cit_out
+        row = cur.execute("""
+            SELECT MAX(ABS(closing_balance_m -
+                (opening_balance_m + total_deposit_flow_m - total_withdrawal_flow_m
+                 + cit_in_m - cit_out_m))) FROM fact_gl_daily
+        """).fetchone()
+        _check("CHECK 6: ledger identity (open+flows+CIT=close)", row[0] or 0.0, 1e-4)
+
+        # CHECK 7: continuity opening[t+1] == closing[t] per branch
+        row = cur.execute("""
+            SELECT MAX(ABS(opening_balance_m - prev_close)) FROM (
+                SELECT opening_balance_m,
+                       LAG(closing_balance_m) OVER (PARTITION BY branch_id ORDER BY date) AS prev_close
+                FROM fact_gl_daily
+            ) WHERE prev_close IS NOT NULL
+        """).fetchone()
+        _check("CHECK 7: vault continuity (open[t+1]=close[t])", row[0] or 0.0, 1e-6)
+
+        # CHECK 8: closing balance never negative
+        min_close = cur.execute("SELECT MIN(closing_balance_m) FROM fact_gl_daily").fetchone()[0]
+        ok8 = min_close >= -1e-6
+        print(f"  {'✓' if ok8 else '✗'} CHECK 8: closing balance non-negative  (min: {min_close:.6f})")
+        if not ok8:
             all_pass = False
 
         return all_pass
 
-    # ======================================================================
-    # generate_all
-    # ======================================================================
 
-    def generate_all(self) -> dict:
-        """
-        Generate all 3 tables, run reconciliation, return results.
-        """
-        t_start = time.time()
+# ---------------------------------------------------------------------------
+# Dry-run: tune noise sigma WITHOUT writing the DB
+# ---------------------------------------------------------------------------
 
-        print("=" * 70)
-        print("RECONCILING DATA GENERATOR")
-        print(f"  Branches: {len(self.branches)}")
-        print(f"  Days:     {self.n_days}")
-        print(f"  Period:   {self.start_date} to {self.end_date}")
-        print("=" * 70)
+def dry_run_levels(db_path: str | None = None, branch_type: str = "HUB",
+                   sigmas=(0.15, 0.20, 0.25),
+                   start: str = "2024-01-01", end: str = "2027-12-31"):
+    """Simulate one representative branch's WITHDRAWAL flow over the full calendar
+    for several noise sigmas and print realized per-flag means + p95/p99/max +
+    clamp-bind %. No DB writes. Level/noise are branch-independent, so a single
+    branch represents all (the realized MULTIPLIER is scale-invariant)."""
+    if db_path is None:
+        from pathlib import Path
+        db_path = str(Path(__file__).resolve().parent.parent.parent / "cash_engine.db")
 
-        # 1. Market dimension
-        print("\n[1/3] Generating dim_market ...")
-        dim_market = self.generate_dim_market()
+    gen = ReconcilingDataGenerator(db_path=db_path, start=start, end=end)
+    dates_dt = pd.to_datetime(gen.dates)
+    dows = dates_dt.dayofweek.values
+    dates_py = [d.date() for d in dates_dt]
+    dow = gen._dow_weights(dows)
+    level = gen._withdrawal_level_array(dates_py)
+    normal_mask = gen._normal_day_mask(dates_py)
 
-        # 2. GL daily facts
-        print("\n[2/3] Generating fact_gl_daily ...")
-        fact_gl = self.generate_fact_gl_daily(dim_market)
+    feats = [pk_calendar.calendar_features(d) for d in dates_py]
+    fl = {k: np.array([bool(f[k]) for f in feats])
+          for k in ("is_pre_eid_surge", "is_salary_window", "is_ramadan", "is_bridge_day")}
+    ram_ex_preeid = fl["is_ramadan"] & ~fl["is_pre_eid_surge"]
 
-        # 3. Transaction facts
-        print("\n[3/3] Generating fact_transactions ...")
-        fact_txn = self.generate_fact_transactions(fact_gl)
+    print("=" * 104)
+    print(f"DRY-RUN — withdrawal realized multiplier vs NORMAL-day baseline "
+          f"(rep. {branch_type} branch, {start}..{end}, no DB write)")
+    print(f"  TARGET_LEVEL={TARGET_LEVEL}  COMPOSED_LEVEL_CAP={COMPOSED_LEVEL_CAP}  "
+          f"CLAMP_FACTOR={CLAMP_FACTOR}")
+    print("=" * 104)
+    print(f"  {'sigma':>6} | {'pre_eid':>7} {'salary':>7} {'ram(whole)':>10} "
+          f"{'ram(exPE)':>9} {'normal':>7} | {'p95':>5} {'p99':>5} {'max':>6} | {'clamp%':>7}")
+    print("  " + "-" * 98)
 
-        # Reconciliation checks
-        print("\n" + "-" * 70)
-        print("RECONCILIATION CHECKS")
-        print("-" * 70)
-        recon_passed = self._verify_reconciliation(fact_gl, fact_txn)
-        status = "ALL PASSED" if recon_passed else "SOME FAILED"
-        print(f"\nReconciliation: {status}")
+    for sigma in sigmas:
+        daily = gen._daily_flow(1000.0, level, dow, sigma)   # total arbitrary (scale-invariant)
+        # NORMAL-day trailing baseline (matches the audit + the clamp)
+        cap = gen._trailing_cap_normal(daily, normal_mask, CLAMP_FACTOR)
+        med = cap / CLAMP_FACTOR                              # = normal-day trailing median
+        mult = daily / med
+        valid = ~np.isnan(mult) & ~np.isinf(med)
+        bind_pct = 100.0 * np.sum((daily > cap)[valid]) / valid.sum()
 
-        elapsed = time.time() - t_start
-        print(f"\nTotal generation time: {elapsed:.1f}s")
-        print(f"  dim_market:        {len(dim_market):>10,} rows")
-        print(f"  fact_gl_daily:     {len(fact_gl):>10,} rows")
-        print(f"  fact_transactions: {len(fact_txn):>10,} rows")
+        def fmean(mask):
+            m = mult[valid & mask]
+            return m.mean() if len(m) else float("nan")
 
-        return {
-            "dim_market": dim_market,
-            "fact_gl_daily": fact_gl,
-            "fact_transactions": fact_txn,
-            "reconciliation_passed": recon_passed,
-        }
+        mv = mult[valid]
+        print(f"  {sigma:>6.2f} | {fmean(fl['is_pre_eid_surge']):>7.2f} "
+              f"{fmean(fl['is_salary_window']):>7.2f} {fmean(fl['is_ramadan']):>10.2f} "
+              f"{fmean(ram_ex_preeid):>9.2f} {fmean(normal_mask):>7.2f} | "
+              f"{np.percentile(mv, 95):>5.2f} {np.percentile(mv, 99):>5.2f} "
+              f"{mv.max():>6.2f} | {bind_pct:>6.2f}%")
+    print("=" * 92)
 
 
 # ---------------------------------------------------------------------------
@@ -591,36 +801,75 @@ class ReconcilingDataGenerator:
 
 def seed_reconciled_data(db_path: str | None = None):
     """
-    Generate and seed CDM tables into the SQLite database.
-    Uses pandas to_sql with if_exists='replace' and chunksize=5000.
+    Generate and seed the CDM tables (dim_market, fact_gl_daily, fact_transactions)
+    over the full pk_calendar horizon. fact_transactions is built and written one
+    calendar year at a time to bound memory; reconciliation runs via SQL afterward.
     """
     if db_path is None:
-        # Resolve the default DB path (same as config.py uses)
         from pathlib import Path
         db_path = str(Path(__file__).resolve().parent.parent.parent / "cash_engine.db")
 
+    t_start = time.time()
     gen = ReconcilingDataGenerator(db_path=db_path)
-    result = gen.generate_all()
 
-    if not result["reconciliation_passed"]:
-        print("\nWARNING: Reconciliation checks did not all pass!")
-        print("Data will still be written, but review the failures above.")
+    print("=" * 70)
+    print("RECONCILING DATA GENERATOR")
+    print(f"  Branches: {len(gen.branches)}")
+    print(f"  Days:     {gen.n_days}  ({gen.start_date} to {gen.end_date})")
+    print("=" * 70)
 
-    # Write to SQLite
-    print("\nWriting to database ...")
+    print("\n[1/3] Generating dim_market ...")
+    dim_market = gen.generate_dim_market()
+
+    print("\n[2/3] Generating fact_gl_daily ...")
+    fact_gl = gen.generate_fact_gl_daily(dim_market)
+
+    cb = gen.clamp_binds
+    bd = max(cb["branch_days"], 1)
+    print(f"  safety-net clamp bound: withdrawals {cb['withdrawal']:,} "
+          f"({100.0 * cb['withdrawal'] / bd:.3f}% of branch-days), "
+          f"deposits {cb['deposit']:,} ({100.0 * cb['deposit'] / bd:.3f}%)")
+
     conn = sqlite3.connect(db_path)
+    print("\nWriting dim_market + fact_gl_daily ...")
+    dim_market.to_sql("dim_market", conn, if_exists="replace", index=False, chunksize=5000)
+    gl_to_write = fact_gl.drop(columns=["id"]) if "id" in fact_gl.columns else fact_gl
+    gl_to_write.to_sql("fact_gl_daily", conn, if_exists="replace", index=False, chunksize=5000)
+    print(f"  dim_market:    {len(dim_market):>10,} rows")
+    print(f"  fact_gl_daily: {len(fact_gl):>10,} rows")
 
-    for table_name in ("dim_market", "fact_gl_daily", "fact_transactions"):
-        df = result[table_name]
-        # Drop the auto-increment 'id' column if present — SQLite will generate it
-        if "id" in df.columns:
-            df = df.drop(columns=["id"])
-        df.to_sql(table_name, conn, if_exists="replace", index=False, chunksize=5000)
-        print(f"  {table_name}: {len(df):,} rows written")
+    print("\n[3/3] Generating fact_transactions (per calendar year) ...")
+    years = sorted({d[:4] for d in fact_gl["date"]})
+    offset = 0
+    total_txn = 0
+    t0 = time.time()
+    for i, yr in enumerate(years):
+        sub = fact_gl[fact_gl["date"].str.startswith(yr)]
+        txn, offset = gen._build_transactions(sub, offset)
+        txn.to_sql("fact_transactions", conn,
+                   if_exists=("replace" if i == 0 else "append"),
+                   index=False, chunksize=20000)
+        total_txn += len(txn)
+        print(f"  {yr}: {len(txn):>9,} txns written  ({time.time() - t0:.1f}s)")
+        del txn
+
+    print(f"  fact_transactions: {total_txn:>10,} rows total")
+
+    print("\n" + "-" * 70)
+    print("RECONCILIATION CHECKS (SQL)")
+    print("-" * 70)
+    recon_passed = gen.verify_sql(conn)
+    print(f"\nReconciliation: {'ALL PASSED' if recon_passed else 'SOME FAILED'}")
 
     conn.close()
-    print("\nDone.")
-    return result
+    print(f"\nTotal time: {time.time() - t_start:.1f}s")
+    print("Done.")
+    return {
+        "dim_market_rows": len(dim_market),
+        "fact_gl_rows": len(fact_gl),
+        "fact_txn_rows": total_txn,
+        "reconciliation_passed": recon_passed,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,7 @@ import torch.nn as nn
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core import pk_calendar
 from app.core.constants import (
     ATM_PARTIAL_STOCKOUT,
     ATM_STOCKOUT_PENALTY,
@@ -59,38 +60,17 @@ logger.info("UC-02 using device: %s", DEVICE)
 # ---------------------------------------------------------------------------
 # Islamic / Pakistan calendar helpers
 # ---------------------------------------------------------------------------
-_EID_DATES: List[date] = [
-    date(2024, 4, 10), date(2024, 6, 17),
-    date(2025, 3, 30), date(2025, 6, 7),
-    date(2026, 3, 20), date(2026, 5, 27),
-    date(2027, 3, 10), date(2027, 5, 16),
-]
+# Single source of truth is app.core.pk_calendar (SBP-verified for 2026).
+def _is_eid_window(d: date, window: int = 7) -> bool:
+    """True if *d* is within *window* days of either Eid (Fitr or Adha)."""
+    feats = pk_calendar.calendar_features(d)
+    return abs(feats["days_to_eid_fitr"]) <= window or abs(feats["days_to_eid_adha"]) <= window
 
-_RAMADAN_STARTS: List[date] = [
-    date(2024, 3, 12),
-    date(2025, 3, 1),
-    date(2026, 2, 18),
-    date(2027, 2, 8),
-]
 
 ATM_TYPE_MAP: Dict[str, int] = {"lobby": 0, "offsite": 1, "mall": 2}
 
 # Standard denomination mix for ATM cassettes
 DENOM_MIX = {5000: 0.40, 1000: 0.30, 500: 0.20, 100: 0.10}
-
-
-def _is_within_window(d: date, reference_dates: List[date], window: int) -> bool:
-    for ref in reference_dates:
-        if abs((d - ref).days) <= window:
-            return True
-    return False
-
-
-def _is_ramadan(d: date) -> bool:
-    for start in _RAMADAN_STARTS:
-        if start <= d <= start + timedelta(days=29):
-            return True
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -132,13 +112,13 @@ def _generate_synthetic_dispense(
             base *= 1.35
 
         # Eid window surge
-        if _is_within_window(d, _EID_DATES, 5):
+        if _is_eid_window(d, 5):
             base *= 1.60
-        elif _is_within_window(d, _EID_DATES, 10):
+        elif _is_eid_window(d, 10):
             base *= 1.25
 
         # Ramadan pattern (higher evenings -> higher daily)
-        if _is_ramadan(d):
+        if pk_calendar.is_ramadan(d)[0]:
             base *= 1.15
 
         # Month-end effect
@@ -275,11 +255,11 @@ def prepare_atm_features(
         col += 1
 
         # is_eid_window (1 feature)
-        raw[t, col] = 1.0 if _is_within_window(d, _EID_DATES, 7) else 0.0
+        raw[t, col] = 1.0 if _is_eid_window(d, 7) else 0.0
         col += 1
 
         # is_ramadan (1 feature)
-        raw[t, col] = 1.0 if _is_ramadan(d) else 0.0
+        raw[t, col] = 1.0 if pk_calendar.is_ramadan(d)[0] else 0.0
         col += 1
 
         # atm_type_encoded (1 feature, normalized 0-2 -> 0-1)
@@ -1252,7 +1232,7 @@ def dqn_recommend(db_session: Session, atm_db_id: int) -> Dict:
     state[5] = 1.0 if today.day in (1, 2, 15, 16) else 0.0
 
     # Eid flag
-    state[6] = 1.0 if _is_within_window(today, _EID_DATES, 7) else 0.0
+    state[6] = 1.0 if _is_eid_window(today, 7) else 0.0
 
     # Days since load
     if atm.last_loaded:

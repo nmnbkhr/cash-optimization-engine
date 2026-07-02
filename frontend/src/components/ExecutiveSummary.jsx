@@ -169,7 +169,8 @@ export default function ExecutiveSummary() {
             </span>
           </div>
           <div style={{ color: theme.text, fontSize: '24px', fontWeight: 700, fontFamily: theme.font }}>
-            {((data.total_annual_savings / 851038) * 100).toFixed(2)}%
+            {/* savings is raw PKR; deposit base 851,038 M -> convert to raw PKR (x1e6) */}
+            {((data.total_annual_savings / (851038 * 1e6)) * 100).toFixed(2)}%
           </div>
           <div style={{ color: theme.textMuted, fontSize: '10px', fontFamily: theme.font, marginTop: '4px' }}>
             of PKR 851B total deposits

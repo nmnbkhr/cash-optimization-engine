@@ -32,6 +32,17 @@ class Settings:
     UBL_TOTAL_ATMS: int = int(os.getenv("UBL_TOTAL_ATMS", "2180"))
     UBL_DEPOSIT_BASE_TRILLIONS: float = float(os.getenv("UBL_DEPOSIT_BASE_TRILLIONS", "2.54"))
 
+    # ── Oversight policy (Phase 4/5) ──
+    # OVERSIGHT_BAND_THRESHOLD is a CAPACITY-DRIVEN OPERATIONS KNOB, not a forecaster
+    # parameter. A branch whose 7-day conformal band half-width exceeds this % routes to
+    # the Exceptions queue for human review; everything tighter is auto-handled. Set it so
+    # the flagged count stays <= reviewer_capacity branches/day. Default 50% -> ~15.7% of
+    # nodes flagged at a calm origin (a genuine minority); the flagged share rises
+    # automatically during known-hard windows (pre-Eid / Ramadan), concentrating human
+    # attention where uncertainty is real. Changing it NEVER alters a prediction or an
+    # interval — only which forecasts a human sees.
+    OVERSIGHT_BAND_THRESHOLD: float = float(os.getenv("OVERSIGHT_BAND_THRESHOLD", "50.0"))
+
     # CORS
     CORS_ORIGINS: list = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

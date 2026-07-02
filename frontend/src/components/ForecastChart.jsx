@@ -4,8 +4,8 @@ import {
   ResponsiveContainer, Legend, ReferenceLine
 } from 'recharts'
 import { Play, Loader2 } from 'lucide-react'
+import axios from 'axios'
 import useAppStore from '../stores/appStore'
-import { runForecast } from '../hooks/useAPI'
 import { formatYAxis } from '../utils/formatPKR'
 
 export default function ForecastChart() {
@@ -25,26 +25,30 @@ export default function ForecastChart() {
     setIsForecasting(true)
     setError(null)
     try {
-      const { data } = await runForecast(selectedBranch.branch_id)
-      // Transform API response into chart-ready format
-      let chartData = data.forecast_data || data.data || []
-      if (chartData.length === 0 && data.forecast_dates) {
-        // Build from separate arrays
-        const hist = (data.historical || []).map(h => ({
-          date: h.date,
-          actual: h.actual,
-          forecast: h.predicted,
-        }))
-        const forecast = data.forecast_dates.map((d, i) => ({
-          date: d,
-          forecast: data.predicted_demand?.[i],
-          confidence_upper: data.confidence_upper?.[i],
-          confidence_lower: data.confidence_lower?.[i],
-        }))
-        chartData = [...hist, ...forecast]
-      }
+      // Frozen T3 managed-level model (h=1..7) with conformal band — the validated
+      // forecaster that replaced the legacy LSTM. Values come back in PKR Millions;
+      // scale to raw PKR so the shared axis/optimal-line formatting stays consistent.
+      const { data } = await axios.post(
+        'http://localhost:8000/api/uc01/managed-level-forecast',
+        { branch_ids: [selectedBranch.branch_id] },
+      )
+      const path = data.forecasts?.[0]?.path || []
+      const chartData = path.map(p => ({
+        date: p.target_date,
+        forecast: p.predicted != null ? p.predicted * 1e6 : null,
+        confidence_upper: p.upper != null ? p.upper * 1e6 : null,
+        confidence_lower: p.lower != null ? p.lower * 1e6 : null,
+        actual: p.actual != null ? p.actual * 1e6 : null,
+      }))
       setForecastData(chartData)
-      setMetrics(data.model_metrics || data.metrics || null)
+      const bands = path.map(p => p.band_pct).filter(x => x != null)
+      const avgBand = bands.length ? bands.reduce((a, b) => a + b, 0) / bands.length : null
+      setMetrics({
+        band: avgBand,
+        horizon: path.length,
+        origin: data.origin_date,
+        model: data.model_version,
+      })
     } catch (err) {
       setError('Failed to run forecast. Check backend connection.')
       console.error('Forecast error:', err)
@@ -53,8 +57,8 @@ export default function ForecastChart() {
     }
   }
 
-  // Calculate optimal level from branch data
-  const optimalLevel = selectedBranch?.optimal_balance || null
+  // Optimal vault level reference (raw PKR), tolerant of either field name.
+  const optimalLevel = selectedBranch?.optimal_vault_balance ?? selectedBranch?.optimal_balance ?? null
 
   return (
     <div
@@ -63,9 +67,20 @@ export default function ForecastChart() {
     >
       {/* Header with button */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold" style={{ color: '#e8eaed' }}>
-          Cash Demand Forecast
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold" style={{ color: '#e8eaed' }}>
+            7-Day Managed Cash Level (T3)
+          </h3>
+          {metrics?.origin && (
+            <span style={{
+              fontSize: 9, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+              color: '#10b981', background: '#10b98118', border: '1px solid #10b98144',
+              borderRadius: 5, padding: '1px 6px', textTransform: 'uppercase',
+            }}>
+              ● reconciled · as-of {metrics.origin}
+            </span>
+          )}
+        </div>
         <button
           className="flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold cursor-pointer transition-opacity"
           style={{
@@ -149,22 +164,22 @@ export default function ForecastChart() {
                 name="95% CI Lower"
               />
 
-              {/* Actual demand line */}
+              {/* Actual realized level */}
               <Line
                 dataKey="actual"
                 stroke="#ef4444"
                 strokeWidth={2}
                 dot={false}
-                name="Actual Demand"
+                name="Actual Level"
               />
 
-              {/* LSTM forecast line */}
+              {/* T3 managed-level forecast line */}
               <Line
                 dataKey="forecast"
                 stroke="#d4a853"
                 strokeWidth={2}
                 dot={false}
-                name="LSTM Forecast"
+                name="T3 Forecast"
                 strokeDasharray="6 3"
               />
 
@@ -186,51 +201,36 @@ export default function ForecastChart() {
             </ComposedChart>
           </ResponsiveContainer>
 
-          {/* Metrics below chart */}
+          {/* Conformal-band summary (frozen T3 model) */}
           {metrics && (
             <div
               className="grid grid-cols-3 gap-3 mt-4 p-3 rounded"
               style={{ backgroundColor: '#0f1419' }}
             >
-              {metrics.mape != null && (
-                <div className="text-center">
-                  <p
-                    className="text-sm font-bold"
-                    style={{ color: '#d4a853', fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    {typeof metrics.mape === 'number' ? `${metrics.mape.toFixed(2)}%` : metrics.mape}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#8b949e', fontFamily: "'DM Sans', sans-serif" }}>
-                    MAPE
-                  </p>
-                </div>
-              )}
-              {metrics.mae != null && (
-                <div className="text-center">
-                  <p
-                    className="text-sm font-bold"
-                    style={{ color: '#2dd4bf', fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    {typeof metrics.mae === 'number' ? formatYAxis(metrics.mae) : metrics.mae}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#8b949e', fontFamily: "'DM Sans', sans-serif" }}>
-                    MAE
-                  </p>
-                </div>
-              )}
-              {metrics.rmse != null && (
-                <div className="text-center">
-                  <p
-                    className="text-sm font-bold"
-                    style={{ color: '#3b82f6', fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    {typeof metrics.rmse === 'number' ? formatYAxis(metrics.rmse) : metrics.rmse}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#8b949e', fontFamily: "'DM Sans', sans-serif" }}>
-                    RMSE
-                  </p>
-                </div>
-              )}
+              <div className="text-center">
+                <p className="text-sm font-bold" style={{ color: '#d4a853', fontFamily: "'JetBrains Mono', monospace" }}>
+                  {metrics.band != null ? `±${metrics.band.toFixed(0)}%` : '--'}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#8b949e', fontFamily: "'DM Sans', sans-serif" }}>
+                  Avg conformal band
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-bold" style={{ color: '#2dd4bf', fontFamily: "'JetBrains Mono', monospace" }}>
+                  {metrics.horizon || 7}d
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#8b949e', fontFamily: "'DM Sans', sans-serif" }}>
+                  Horizon
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-bold" style={{ color: '#3b82f6', fontFamily: "'JetBrains Mono', monospace" }}>
+                  {metrics.origin || '--'}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#8b949e', fontFamily: "'DM Sans', sans-serif" }}>
+                  Origin date
+                </p>
+              </div>
             </div>
           )}
         </>

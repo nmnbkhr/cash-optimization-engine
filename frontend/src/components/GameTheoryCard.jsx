@@ -45,8 +45,11 @@ export default function GameTheoryCard() {
     : []
 
   const nashIndices = ne.nash_equilibria || result?.nash_indices || []
-  const cesScore = result?.cash_efficiency_score ?? result?.ces_score ?? selectedBranch?.ces_score ?? null
-  const bmisScore = result?.branch_manager_incentive_score ?? result?.bmis_score ?? null
+  // Scores are stored as 0–1 fractions; render as a percentage (0–100).
+  const toPct = (v) => (v == null ? null : v <= 1 ? v * 100 : v)
+  const cesScore = toPct(result?.cash_efficiency_score ?? result?.ces_score
+    ?? selectedBranch?.cash_efficiency_score ?? selectedBranch?.ces_score ?? null)
+  const bmisScore = toPct(result?.branch_manager_incentive_score ?? result?.bmis_score ?? null)
   const branchRank = result?.peer_rank ?? result?.branch_rank ?? null
   const totalBranches = result?.total_branches ?? 1532
   const explanation = ne.explanation ?? result?.explanation ?? null
@@ -70,9 +73,22 @@ export default function GameTheoryCard() {
     >
       {/* Header with button */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold" style={{ color: '#2dd4bf' }}>
-          Game Theory Analysis
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold" style={{ color: '#2dd4bf' }}>
+            Game Theory Analysis
+          </h3>
+          <span
+            title="Stylised Nash payoff matrix — methodology demonstration, not driven by reconciled ledger data"
+            style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+              color: '#a78bfa', background: '#a78bfa18', border: '1px solid #a78bfa44',
+              borderRadius: 5, padding: '2px 6px', fontFamily: "'JetBrains Mono', monospace",
+              textTransform: 'uppercase', whiteSpace: 'nowrap',
+            }}
+          >
+            Methodology · illustrative
+          </span>
+        </div>
         <button
           className="flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold cursor-pointer transition-opacity"
           style={{

@@ -1,4 +1,4 @@
-.PHONY: setup seed backend frontend dev migrate clean migrate-demo restore-initial
+.PHONY: setup seed backend frontend dev migrate clean migrate-demo restore-initial forecast-train
 
 setup:
 	conda create -n coe python=3.11 -y || true
@@ -9,6 +9,9 @@ setup:
 
 seed:
 	cd backend && conda run -n coe python seed_data.py
+
+forecast-train:
+	cd backend && conda run -n coe python -m scripts.train_forecast
 
 backend:
 	cd backend && conda run -n coe python -m uvicorn app.main:app --reload --port 8000
@@ -35,6 +38,15 @@ clean:
 	rm -f backend/cash_engine.db
 	rm -rf backend/models/*.pt
 	@echo "Cleaned database and model files."
+
+red-team:
+	cd backend && conda run -n coe python -m app.services.red_team
+
+constitution-test:
+	cd backend && conda run -n coe python -m pytest tests/test_cash_constitution.py -v
+
+contract-test:
+	cd backend && conda run -n coe python -m pytest tests/test_uc10_data_source_contract.py -v
 
 daily-run:
 	cd backend && conda run -n coe python -c "from app.services.daily_runner import DailyRunner; import json; print(json.dumps(DailyRunner().run_morning_cycle(), indent=2))"

@@ -2,12 +2,12 @@ export const useCases = [
   {
     id: 'uc01',
     title: 'Branch Vault Cash Forecasting',
-    subtitle: 'LSTM + Stochastic Optimization',
-    description: 'AI-powered cash demand forecasting with vault right-sizing using PyTorch LSTM and stochastic LP optimization.',
+    subtitle: 'Direct multi-horizon XGBoost (T3 managed-level)',
+    description: 'Managed cash-level forecasting (T3, EWMA-smoothed closing) with conformal prediction bands and vault right-sizing on reconciled ledger data.',
     icon: 'Vault',
     status: 'active',
-    metrics: { accuracy: '94.7%', savings: '10.8B', branches: '1,547' },
-    tags: ['LSTM', 'GPU', 'Stochastic LP', 'Game Theory'],
+    metrics: { coverage: '66% ±12.5%', savings: '10.8B', branches: '1,547' },
+    tags: ['XGBoost', 'Conformal', 'Stochastic LP', 'Reconciled GL'],
     color: '#d4a853',
   },
   {

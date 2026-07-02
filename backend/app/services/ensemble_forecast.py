@@ -44,8 +44,20 @@ class EnsembleForecastService:
         gl = pd.read_sql_query("SELECT * FROM fact_gl_daily", con)
         branches = pd.read_sql_query(
             "SELECT branch_id, branch_type, city, daily_transactions, total_deposits FROM branches", con)
-        market = pd.read_sql_query("SELECT date, kibor_overnight, is_friday, is_salary_day FROM dim_market", con)
+        # is_friday is dropped here — dim_calendar is the authoritative source for it.
+        # is_salary_day is kept from dim_market (dim_calendar carries richer salary
+        # features instead: is_salary_window / days_to_payday / is_salary_credit_day).
+        market = pd.read_sql_query("SELECT date, kibor_overnight, is_salary_day FROM dim_market", con)
+        try:
+            calendar = pd.read_sql_query("SELECT * FROM dim_calendar", con)
+        except Exception:
+            calendar = pd.DataFrame(columns=["date"])
         con.close()
+
+        # Drop non-numeric / label columns before the feature join
+        calendar = calendar.drop(
+            columns=[c for c in ("holiday_name", "holiday_type") if c in calendar.columns]
+        )
 
         # Convert branch amounts to PKR M
         if 'total_deposits' in branches.columns:
@@ -53,6 +65,7 @@ class EnsembleForecastService:
 
         df = gl.merge(branches, on="branch_id", how="left")
         df = df.merge(market, on="date", how="left")
+        df = df.merge(calendar, on="date", how="left")
         return df
 
     def _engineer_features(self, df: pd.DataFrame) -> tuple:
@@ -62,6 +75,9 @@ class EnsembleForecastService:
         df["day_of_week"] = df["date_dt"].dt.dayofweek
         df["day_of_month"] = df["date_dt"].dt.day
         df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
+        # is_friday now sourced from dim_calendar; derive it too so the feature is
+        # always present even if dim_calendar is absent (identical value either way).
+        df["is_friday"] = (df["day_of_week"] == 4).astype(int)
 
         # Encode categoricals
         df["branch_type_enc"] = self.le_branch_type.fit_transform(
@@ -77,6 +93,20 @@ class EnsembleForecastService:
                 lambda x: x.rolling(7, min_periods=1).mean())
 
         df["dep_wth_ratio"] = df["total_deposit_flow_m"] / df["total_withdrawal_flow_m"].clip(lower=0.01)
+
+        # Richer pk_calendar features (joined from dim_calendar). Guarantee the
+        # columns exist so the pipeline stays backward-compatible when dim_calendar
+        # is absent or a date falls outside the calendar range (filled with 0).
+        calendar_feature_cols = [
+            "is_salary_window", "days_to_payday", "is_pre_eid_surge",
+            "days_to_eid_fitr", "days_to_eid_adha", "is_ramadan", "ramadan_day",
+            "is_pre_holiday", "is_post_holiday", "is_bridge_day",
+            "is_month_end", "is_quarter_end", "is_fiscal_year_end",
+        ]
+        for c in calendar_feature_cols:
+            if c not in df.columns:
+                df[c] = 0
+
         df = df.fillna(0)
 
         self._feature_cols = [
@@ -86,7 +116,7 @@ class EnsembleForecastService:
             "total_deposit_flow_m_lag1", "total_withdrawal_flow_m_lag1",
             "total_deposit_flow_m_roll7", "total_withdrawal_flow_m_roll7",
             "dep_wth_ratio",
-        ]
+        ] + calendar_feature_cols
         return df
 
     def train(self) -> dict:

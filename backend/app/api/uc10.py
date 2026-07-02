@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/uc10", tags=["uc10"])
 async def pnl_summary(db: Session = Depends(get_db)):
     """Cash P&L attribution summary metrics."""
     try:
-        from app.services.uc10_pnl_attribution import get_pnl_summary
+        from app.services.uc10_pnl_reconciled import get_pnl_summary
         return get_pnl_summary(db)
     except Exception as e:
         logger.exception("P&L summary failed")
@@ -22,7 +22,7 @@ async def pnl_summary(db: Session = Depends(get_db)):
 async def pnl_waterfall(db: Session = Depends(get_db)):
     """P&L waterfall breakdown from gross cost to net cost."""
     try:
-        from app.services.uc10_pnl_attribution import get_pnl_waterfall
+        from app.services.uc10_pnl_reconciled import get_pnl_waterfall
         return get_pnl_waterfall(db)
     except Exception as e:
         logger.exception("P&L waterfall failed")
@@ -33,7 +33,7 @@ async def pnl_waterfall(db: Session = Depends(get_db)):
 async def branch_ranking(db: Session = Depends(get_db)):
     """Branch performance ranking by net cash cost."""
     try:
-        from app.services.uc10_pnl_attribution import get_branch_ranking
+        from app.services.uc10_pnl_reconciled import get_branch_ranking
         return get_branch_ranking(db)
     except Exception as e:
         logger.exception("Branch ranking failed")
@@ -44,7 +44,7 @@ async def branch_ranking(db: Session = Depends(get_db)):
 async def cost_treemap(db: Session = Depends(get_db)):
     """Cost treemap data grouped by region."""
     try:
-        from app.services.uc10_pnl_attribution import get_cost_treemap
+        from app.services.uc10_pnl_reconciled import get_cost_treemap
         return get_cost_treemap(db)
     except Exception as e:
         logger.exception("Cost treemap failed")
@@ -55,7 +55,7 @@ async def cost_treemap(db: Session = Depends(get_db)):
 async def transfer_pricing(db: Session = Depends(get_db)):
     """Compute transfer pricing P&L for all branches."""
     try:
-        from app.services.uc10_pnl_attribution import TransferPricingEngine
+        from app.services.uc10_pnl_reconciled import TransferPricingEngine
         return TransferPricingEngine().compute_transfer_prices(db)
     except Exception as e:
         logger.exception("Transfer pricing failed")
@@ -66,7 +66,7 @@ async def transfer_pricing(db: Session = Depends(get_db)):
 async def alco_report(db: Session = Depends(get_db)):
     """Executive ALCO report for cash operations."""
     try:
-        from app.services.uc10_pnl_attribution import get_alco_report
+        from app.services.uc10_pnl_reconciled import get_alco_report
         return get_alco_report(db)
     except Exception as e:
         logger.exception("ALCO report failed")
@@ -78,7 +78,7 @@ async def pnl_ai_brief(db: Session = Depends(get_db)):
     """AI executive brief for Cash P&L Attribution results."""
     from app.core.ai_client import ask_ai
     try:
-        from app.services.uc10_pnl_attribution import get_pnl_summary
+        from app.services.uc10_pnl_reconciled import get_pnl_summary
         summary = get_pnl_summary(db)
 
         system_prompt = (

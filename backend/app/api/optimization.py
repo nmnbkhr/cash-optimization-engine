@@ -16,21 +16,16 @@ async def optimize_vault(branch_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Branch not found")
 
     try:
-        from app.services.uc01_vault_forecast import (
-            forecast_branch as run_forecast,
-            VaultOptimizer,
-        )
-        # Get forecast first
-        forecast = run_forecast(db, branch.id)
-        predicted = forecast["predicted_demand"]
+        from app.services.uc01_vault_forecast import VaultOptimizer
+        from app.services.uc01_demand_input import reconciled_demand_forecast
 
-        # Compute std from confidence intervals
-        import numpy as np
-        upper = np.array(forecast["confidence_upper"])
-        lower = np.array(forecast["confidence_lower"])
-        mean = np.array(predicted)
-        std = (upper - lower) / (2 * 1.645)
-        std = np.maximum(std, np.abs(mean) * 0.05)  # floor at 5% of mean
+        # Demand input now comes from the RECONCILED ledger (withdrawal flow), not the
+        # stale/degenerate LSTM on vault_positions. Same system of record as the T3 model.
+        fc = reconciled_demand_forecast(branch.branch_id)
+        if fc is None:
+            raise HTTPException(status_code=404,
+                                detail="No reconciled ledger data for branch")
+        mean, std, meta = fc
 
         optimizer = VaultOptimizer()
         result = optimizer.optimize(
@@ -40,7 +35,10 @@ async def optimize_vault(branch_id: str, db: Session = Depends(get_db)):
             current_vault_level=branch.current_vault_balance,
             branch_minimum=branch.optimal_vault_balance * 0.5,
         )
+        result["forecast_source"] = meta
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Optimization failed for %s", branch_id)
         raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")

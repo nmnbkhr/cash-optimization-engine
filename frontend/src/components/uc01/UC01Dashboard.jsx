@@ -45,8 +45,9 @@ export default function UC01Dashboard() {
   // Compute KPI metrics from data
   const totalBranches = branches.length
   const totalIdleCash = branches.reduce((sum, b) => sum + (b.idle_cash || 0), 0)
+  // CES is stored as a 0–1 fraction (cash_efficiency_score); render as a percentage.
   const avgCES = totalBranches > 0
-    ? branches.reduce((sum, b) => sum + (b.ces_score || 0), 0) / totalBranches
+    ? branches.reduce((sum, b) => sum + (b.cash_efficiency_score ?? b.ces_score ?? 0), 0) / totalBranches * 100
     : 0
   const totalSavings = totalIdleCash * 0.11
   const kibor = uc01NetworkSummary?.kibor_rate ?? 11.0

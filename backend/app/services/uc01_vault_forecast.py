@@ -31,6 +31,7 @@ from scipy.optimize import minimize_scalar
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core import pk_calendar
 from app.core.constants import (
     BRANCH_TYPES,
     CIT_EMERGENCY_COST,
@@ -60,58 +61,23 @@ logger.info("UC-01 using device: %s", DEVICE)
 # ---------------------------------------------------------------------------
 # Islamic / Pakistan calendar helpers
 # ---------------------------------------------------------------------------
-# Approximate Eid-ul-Fitr and Eid-ul-Adha dates for 2024-2027.
-# These shift ~10-11 days earlier each Gregorian year.
-_EID_DATES: List[date] = [
-    # 2024
-    date(2024, 4, 10), date(2024, 6, 17),
-    # 2025
-    date(2025, 3, 30), date(2025, 6, 7),
-    # 2026
-    date(2026, 3, 20), date(2026, 5, 27),
-    # 2027
-    date(2027, 3, 10), date(2027, 5, 16),
-]
+# Single source of truth is app.core.pk_calendar (SBP-verified for 2026).
+# These thin wrappers preserve the LSTM's binary calendar features.
+def _is_eid_window(d: date, window: int = 7) -> bool:
+    """True if *d* is within *window* days of either Eid (Fitr or Adha)."""
+    feats = pk_calendar.calendar_features(d)
+    return abs(feats["days_to_eid_fitr"]) <= window or abs(feats["days_to_eid_adha"]) <= window
 
-# Approximate Ramadan start dates
-_RAMADAN_STARTS: List[date] = [
-    date(2024, 3, 12),
-    date(2025, 3, 1),
-    date(2026, 2, 18),
-    date(2027, 2, 8),
-]
 
-# Approximate Muharram 1 dates
-_MUHARRAM_STARTS: List[date] = [
-    date(2024, 7, 8),
-    date(2025, 6, 27),
-    date(2026, 6, 17),
-    date(2027, 6, 6),
-]
+def _is_ashura_window(d: date, window: int = 7) -> bool:
+    """First-10-of-Muharram proxy: within *window* days of the gazetted Ashura cluster."""
+    return any(
+        name == "Ashura" and abs((d - hd).days) <= window
+        for hd, (name, _t) in pk_calendar.HOLIDAY_MAP.items()
+    )
+
 
 BRANCH_TYPE_MAP: Dict[str, int] = {bt: i for i, bt in enumerate(BRANCH_TYPES)}
-
-
-def _is_within_window(d: date, reference_dates: List[date], window: int) -> bool:
-    """Return True if *d* is within +-window days of any reference date."""
-    for ref in reference_dates:
-        if abs((d - ref).days) <= window:
-            return True
-    return False
-
-
-def _is_ramadan(d: date) -> bool:
-    for start in _RAMADAN_STARTS:
-        if start <= d <= start + timedelta(days=29):
-            return True
-    return False
-
-
-def _is_muharram_first10(d: date) -> bool:
-    for start in _MUHARRAM_STARTS:
-        if start <= d <= start + timedelta(days=9):
-            return True
-    return False
 
 
 # ======================================================================
@@ -236,15 +202,15 @@ def prepare_features(
         col += 1
 
         # is_eid_window (+-7 days)
-        raw[t, col] = 1.0 if _is_within_window(d, _EID_DATES, 7) else 0.0
+        raw[t, col] = 1.0 if _is_eid_window(d, 7) else 0.0
         col += 1
 
         # is_ramadan
-        raw[t, col] = 1.0 if _is_ramadan(d) else 0.0
+        raw[t, col] = 1.0 if pk_calendar.is_ramadan(d)[0] else 0.0
         col += 1
 
         # is_muharram
-        raw[t, col] = 1.0 if _is_muharram_first10(d) else 0.0
+        raw[t, col] = 1.0 if _is_ashura_window(d, 7) else 0.0
         col += 1
 
         # crop_season (Seasonal branches: Rabi Nov-Apr=1, Kharif May-Oct=1 for Seasonal only)

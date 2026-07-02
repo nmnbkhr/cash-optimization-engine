@@ -11,6 +11,7 @@ import BranchRankingTable from './BranchRankingTable'
 import CostTreemap from './CostTreemap'
 import TransferPricingDash from './TransferPricingDash'
 import ALCOReport from './ALCOReport'
+import DataSourceBadge from '../common/DataSourceBadge'
 import formatPKR from '../../utils/formatPKR'
 
 const theme = {
@@ -216,6 +217,7 @@ export default function UC10Dashboard() {
           }}>
             Cash P&L Attribution
           </h1>
+          {s.lineage && <DataSourceBadge lineage={s.lineage} />}
         </div>
         <p style={{
           color: theme.textSecondary,
@@ -223,7 +225,7 @@ export default function UC10Dashboard() {
           fontFamily: theme.font,
           margin: 0,
         }}>
-          ABC Costing + Transfer Pricing -- Branch Performance Tournament
+          ABC Costing on reconciled ledger -- Transfer Pricing -- Branch Tournament
         </p>
       </div>
 

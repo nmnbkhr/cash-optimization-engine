@@ -8,14 +8,15 @@ import { formatYAxis } from '../utils/formatPKR'
 export default function VaultChart() {
   const branches = useAppStore((s) => s.branches)
 
-  // Sort by idle_cash descending, take top 15
+  // Sort by idle_cash descending, take top 15. Tolerate either field-naming convention.
+  const curBal = (b) => b.current_vault_balance ?? b.current_balance ?? null
   const sortedBranches = [...branches]
-    .filter((b) => b.current_balance != null || b.idle_cash != null)
+    .filter((b) => curBal(b) != null || b.idle_cash != null)
     .sort((a, b) => (b.idle_cash || 0) - (a.idle_cash || 0))
     .slice(0, 15)
 
   const data = sortedBranches.map((b) => {
-    const total = b.current_balance || 0
+    const total = curBal(b) || 0
     const idle = b.idle_cash || 0
     const productive = Math.max(0, total - idle)
     // Truncate name to 12 chars
