@@ -184,6 +184,33 @@ class CashOptimizationEngine:
         self._NETWORK_CACHE_VAL = state
         return state, as_of
 
+    def _reconciled_network_costs(self, days: int = 30) -> dict | None:
+        """Trailing-`days` network cost pools from fact_gl_daily (real ABC costing), PKR M.
+        Returns None if the ledger is empty (caller falls back to estimated costs)."""
+        row = self.db.execute(text("SELECT MAX(date) FROM fact_gl_daily")).fetchone()
+        as_of = row[0] if row else None
+        if not as_of:
+            return None
+        r = self.db.execute(
+            text(
+                "SELECT SUM(personnel_cost_m) p, SUM(premises_cost_m) pr, "
+                "       SUM(cash_handling_cost_m) ch, SUM(cit_cost_m) cit, "
+                "       SUM(insurance_cost_m) ins, SUM(direct_cost_m) d, SUM(other_cost_m) o "
+                "FROM fact_gl_daily WHERE date > date(:d, :off)"
+            ),
+            {"d": as_of, "off": f"-{days} days"},
+        ).fetchone()
+        return {
+            "as_of": as_of,
+            "personnel_m": float(r.p or 0.0),
+            "premises_m": float(r.pr or 0.0),
+            "cash_handling_m": float(r.ch or 0.0),
+            "cit_m": float(r.cit or 0.0),
+            "insurance_m": float(r.ins or 0.0),
+            "direct_m": float(r.d or 0.0),
+            "other_m": float(r.o or 0.0),
+        }
+
     def _branch_optimal(self, avg_wd_m: float, capacity_m: float) -> tuple[float, float, float]:
         """Consistent (optimal, sbp_minimum, insurance_limit) in PKR M from reconciled demand.
         Same formula as vault_recommendation so every UC agrees on surplus/deficit."""
@@ -921,10 +948,12 @@ class CashOptimizationEngine:
     # ══════════════════════════════════════════════════════════
 
     def digital_shift_report(self) -> dict:
-        branches = self.db.query(Branch).all()
+        # Reconciled spine for cash-intensity (withdrawal vs deposit flow); transaction
+        # counts are a static branch attribute (not carried in the daily ledger).
+        states, as_of, data_source = self._branch_states()
 
-        total_cash_txns = sum(b.daily_transactions * 0.65 for b in branches)
-        total_digital_txns = sum(b.daily_transactions * 0.35 for b in branches)
+        total_cash_txns = sum(st["branch"].daily_transactions * 0.65 for st in states)
+        total_digital_txns = sum(st["branch"].daily_transactions * 0.35 for st in states)
 
         cash_cost = 0.000095
         digital_cost = 0.000008
@@ -938,26 +967,28 @@ class CashOptimizationEngine:
         monthly_campaign = shifted * 25 * 0.000050
 
         branches_sorted = sorted(
-            [b for b in branches if b.avg_daily_deposits > 0],
-            key=lambda b: b.avg_daily_withdrawals / max(b.avg_daily_deposits, 0.001),
+            [st for st in states if st["avg_dep"] > 0],
+            key=lambda st: st["avg_wd"] / max(st["avg_dep"], 0.001),
             reverse=True,
         )
 
         top_heavy = [
             {
-                "branch_id": b.branch_id,
-                "name": b.name,
-                "city": b.city,
-                "cash_intensity": round(b.avg_daily_withdrawals / max(b.avg_daily_deposits, 0.001) * 100, 2),
-                "daily_cash_txns": int(b.daily_transactions * 0.65),
-                "potential_shift": int(b.daily_transactions * 0.65 * shift_pct),
+                "branch_id": st["branch"].branch_id,
+                "name": st["branch"].name,
+                "city": st["branch"].city,
+                "cash_intensity": round(st["avg_wd"] / max(st["avg_dep"], 0.001) * 100, 2),
+                "daily_cash_txns": int(st["branch"].daily_transactions * 0.65),
+                "potential_shift": int(st["branch"].daily_transactions * 0.65 * shift_pct),
             }
-            for b in branches_sorted[:20]
+            for st in branches_sorted[:20]
         ]
 
         roi_pct = round((monthly_savings / max(monthly_campaign, 0.001) - 1) * 100, 0)
 
         return {
+            "data_source": data_source,
+            "as_of": as_of,
             "current_state": {
                 "cash_transactions_pct": 65,
                 "digital_transactions_pct": 35,
@@ -994,9 +1025,21 @@ class CashOptimizationEngine:
         atms = self.db.query(ATM).all()
         nostros = self.db.query(NostroAccount).all()
 
-        # Revenue: idle cash freed at KIBOR (all in PKR Millions)
-        branch_idle = sum(M(b.idle_cash) for b in branches)
+        # Revenue: idle cash freed at KIBOR (all in PKR Millions).
+        # Idle + CRR read from the reconciled ledger; graceful fallback to ORM snapshot.
+        net_state, as_of = self._reconciled_network_state()
+        if net_state:
+            data_source = "reconciled"
+            branch_idle = sum(s["idle_cash_m"] for s in net_state.values())
+            crr_freed = sum(max(0.0, s["crr_held_m"] - s["crr_required_m"]) for s in net_state.values())
+        else:
+            data_source = "snapshot"
+            as_of = str(date.today())
+            branch_idle = sum(M(b.idle_cash) for b in branches)
+            latest_crr = self.db.query(CRRPosition).order_by(CRRPosition.date.desc()).first()
+            crr_freed = M(latest_crr.freed_liquidity) if latest_crr else 0
         vault_income = branch_idle * self.kibor / 12
+        crr_income = crr_freed * self.kibor / 12
 
         atm_idle = 0.0
         for atm in atms:
@@ -1005,32 +1048,41 @@ class CashOptimizationEngine:
             atm_idle += max(0, cash_m - optimal)
         atm_income = atm_idle * self.kibor / 12
 
-        # CRR float income
-        latest_crr = self.db.query(CRRPosition).order_by(CRRPosition.date.desc()).first()
-        crr_freed = M(latest_crr.freed_liquidity) if latest_crr else 0
-        crr_income = crr_freed * self.kibor / 12
-
         nostro_excess = sum(M(n.excess_balance) for n in nostros)
         nostro_income = nostro_excess * self.kibor / 12
 
         total_revenue = vault_income + atm_income + crr_income + nostro_income
 
-        # Cost side (estimated from branch count)
-        n_branches = len(branches)
-        cash_personnel = n_branches * 0.12
-        cash_premises = n_branches * 0.03
-        cit_handling = n_branches * 0.08
-        other_ops = n_branches * 0.02
+        # Cost side: REAL ABC cost pools from the reconciled ledger (trailing 30 days).
+        # Vault insurance is a carrying cost of held cash (reported as a memo line, not an
+        # operational handling cost), so it doesn't distort ops P&L. Fallback = branch-count
+        # estimate when the ledger is unavailable.
+        costs = self._reconciled_network_costs(30)
+        if costs:
+            cash_personnel = costs["personnel_m"]
+            cash_premises = costs["premises_m"]
+            cit_handling = costs["cash_handling_m"] + costs["cit_m"]
+            other_ops = costs["direct_m"] + costs["other_m"]
+            insurance_carry = costs["insurance_m"]
+        else:
+            data_source = "snapshot"
+            n_branches = len(branches)
+            cash_personnel = n_branches * 0.12
+            cash_premises = n_branches * 0.03
+            cit_handling = n_branches * 0.08
+            other_ops = n_branches * 0.02
+            insurance_carry = 0.0
         total_cost = cash_personnel + cash_premises + cit_handling + other_ops
 
         bsc_avoided = branch_idle * self.bsc_service_charge
         net_value = total_revenue - total_cost + bsc_avoided
 
         avg_ces = sum(b.cash_efficiency_score for b in branches) / max(len(branches), 1)
-        bsc_avoided = branch_idle * self.bsc_service_charge
 
         return {
             "period": "Monthly",
+            "date": as_of,
+            "data_source": data_source,
             "revenue": {
                 "vault_cash_freed_income": round(vault_income, 2),
                 "atm_cash_freed_income": round(atm_income, 2),
@@ -1044,6 +1096,7 @@ class CashOptimizationEngine:
                 "cit_and_handling": round(cit_handling, 2),
                 "other_cash_ops": round(other_ops, 2),
                 "total_cash_ops_cost": round(total_cost, 2),
+                "vault_insurance_carry_memo": round(insurance_carry, 2),
             },
             "net_value_realized": {
                 "monthly": round(net_value, 2),
@@ -1079,8 +1132,16 @@ class CashOptimizationEngine:
         branches = self.db.query(Branch).all()
         atm_count = self.db.query(func.count(ATM.id)).scalar() or 0
 
-        total_vault = sum(M(b.current_vault_balance) for b in branches)
-        total_idle = sum(M(b.idle_cash) for b in branches)
+        # Bank snapshot from the reconciled ledger (fallback to ORM snapshot).
+        net_state, as_of = self._reconciled_network_state()
+        if net_state:
+            total_vault = sum(s["closing_balance_m"] for s in net_state.values())
+            total_idle = sum(s["idle_cash_m"] for s in net_state.values())
+            snapshot_source = "reconciled"
+        else:
+            total_vault = sum(M(b.current_vault_balance) for b in branches)
+            total_idle = sum(M(b.idle_cash) for b in branches)
+            snapshot_source = "snapshot"
         deposit_base = UBL_DEPOSIT_BASE_TRILLIONS * 1e6  # PKR trillions -> PKR millions
 
         crr_deploy = crr.get("recommendation", {}).get("free_for_deployment", 0) if "error" not in crr else 0
@@ -1101,6 +1162,8 @@ class CashOptimizationEngine:
                 "deposit_base": round(deposit_base, 0),
                 "total_vault_cash": round(total_vault, 0),
                 "total_idle_cash": round(total_idle, 0),
+                "data_source": snapshot_source,
+                "as_of": as_of,
             },
             "optimization_impact": {
                 "monthly_value_realized": pnl["net_value_realized"]["monthly"],
