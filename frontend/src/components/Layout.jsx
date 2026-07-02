@@ -6,7 +6,7 @@ import {
   Building2, MapPin, Landmark, Target, ShieldCheck, LineChart,
   Route, MonitorSmartphone, Map, Activity, Grid3x3, BarChart2,
   Gauge, Globe2, ClipboardCheck, SlidersHorizontal, Bell, Zap,
-  Cpu, ArrowLeftRight, Calendar, ChevronDown
+  Cpu, ArrowLeftRight, Calendar, ChevronDown, FlaskConical
 } from 'lucide-react'
 import useAppStore from '../stores/appStore'
 import { useCases } from '../data/useCases'
@@ -32,6 +32,7 @@ import WhatIfSimulator from './business/WhatIfSimulator'
 import AlertsPanel from './business/AlertsPanel'
 import CommandCenter from './business/CommandCenter'
 import ForecastDashboard from './business/ForecastDashboard'
+import ForecastLab from './business/ForecastLab'
 import CDMPlan from './business/CDMPlan'
 import IECHub from './business/IECHub'
 import ComplianceMonitor from './business/ComplianceMonitor'
@@ -47,7 +48,7 @@ const ICONS = {
   Grid3x3, Map, Landmark, ArrowLeftRight, LineChart, SlidersHorizontal,
   Calendar, MonitorSmartphone, Cpu, BarChart2, PieChart, Shield,
   ShieldCheck, LayoutGrid, Vault, CreditCard, GitBranch, Globe,
-  Layers, Truck, Smartphone, BarChart3,
+  Layers, Truck, Smartphone, BarChart3, FlaskConical,
 }
 
 /* ─── UC icon map (for header badge) ─── */
@@ -85,6 +86,7 @@ const NAV_CONFIG = [
       { id: 'biz-branch', label: 'Branch Action Plan', icon: 'Building2', roles: '*' },
       { id: 'biz-cit', label: 'CIT & Fleet', icon: 'Route', roles: ['SUPERUSER', 'OPERATIONS', 'BRANCH_MANAGER', 'REGIONAL_HEAD'] },
       { id: 'biz-forecast', label: 'Forecast', icon: 'TrendingUp', roles: ['SUPERUSER', 'TREASURY', 'CFO', 'REGIONAL_HEAD'] },
+      { id: 'biz-forecast-lab', label: 'Forecast Lab', icon: 'FlaskConical', roles: ['SUPERUSER', 'TREASURY', 'CFO'] },
     ],
   },
   {
@@ -164,6 +166,7 @@ const HEADER_TITLES = {
   'biz-command': 'Command Center',
   'biz-exceptions': 'Exceptions Queue — Human-in-the-Loop Oversight',
   'biz-forecast': 'Forecast Dashboard',
+  'biz-forecast-lab': 'Forecast Lab — Model Comparison & Accuracy',
   'biz-pulse': 'Cash Pulse',
   'biz-heatmap': 'Vault Health Heatmap',
   'biz-waterfall': 'P&L Waterfall',
@@ -573,6 +576,7 @@ export default function Layout() {
             : currentUC === 'biz-command' ? <CommandCenter />
             : currentUC === 'biz-exceptions' ? <ExceptionsQueue />
             : currentUC === 'biz-forecast' ? <ForecastDashboard />
+            : currentUC === 'biz-forecast-lab' ? <ForecastLab />
             : currentUC === 'biz-pulse' ? <CashPulse />
             : currentUC === 'biz-heatmap' ? <VaultHeatmap />
             : currentUC === 'biz-waterfall' ? <PnLWaterfall />
