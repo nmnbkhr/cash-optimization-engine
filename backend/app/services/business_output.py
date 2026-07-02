@@ -112,6 +112,129 @@ class CashOptimizationEngine:
         }
 
     # ══════════════════════════════════════════════════════════
+    # RECONCILED SPINE — network state (latest row per branch)
+    # ══════════════════════════════════════════════════════════
+    _NETWORK_CACHE_KEY = None
+    _NETWORK_CACHE_VAL = None
+
+    def _reconciled_network_state(self, lookback: int = 90) -> tuple[dict, str | None]:
+        """Latest reconciled row per branch from fact_gl_daily, keyed by branch_id, plus
+        the as-of date. Balances/idle/CRR/deposits/cost-pools come from the latest ledger
+        date; withdrawal/deposit *flows* are averaged over the trailing `lookback` days so
+        surplus/deficit and demand figures are stable, not single-day noise.
+
+        This is the network-wide analogue of _reconciled_branch_state — one bulk pair of
+        queries (~1,532 rows) instead of a per-branch scan. All amounts already in PKR M.
+        Cached on the instance so the consolidated views don't re-query per sub-report."""
+        row = self.db.execute(text("SELECT MAX(date) FROM fact_gl_daily")).fetchone()
+        as_of = row[0] if row else None
+        if not as_of:
+            return {}, None
+        cache_key = (as_of, lookback)
+        if self._NETWORK_CACHE_KEY == cache_key and self._NETWORK_CACHE_VAL is not None:
+            return self._NETWORK_CACHE_VAL, as_of
+
+        snap = self.db.execute(
+            text(
+                "SELECT branch_id, closing_balance_m, idle_cash_m, crr_held_m, crr_required_m, "
+                "       total_deposits_m, casa_deposits_m, term_deposits_m, "
+                "       personnel_cost_m, premises_cost_m, cash_handling_cost_m, cit_cost_m, "
+                "       insurance_cost_m, direct_cost_m, other_cost_m, "
+                "       interest_income_m, interest_expense_m, fee_income_m "
+                "FROM fact_gl_daily WHERE date = :d"
+            ),
+            {"d": as_of},
+        ).fetchall()
+
+        flows = self.db.execute(
+            text(
+                "SELECT branch_id, AVG(total_withdrawal_flow_m) AS avg_wd, "
+                "       AVG(total_deposit_flow_m) AS avg_dep "
+                "FROM fact_gl_daily WHERE date > date(:d, :off) GROUP BY branch_id"
+            ),
+            {"d": as_of, "off": f"-{lookback} days"},
+        ).fetchall()
+        flow_map = {r.branch_id: (float(r.avg_wd or 0.0), float(r.avg_dep or 0.0)) for r in flows}
+
+        state = {}
+        for r in snap:
+            avg_wd, avg_dep = flow_map.get(r.branch_id, (0.0, 0.0))
+            state[r.branch_id] = {
+                "closing_balance_m": float(r.closing_balance_m or 0.0),
+                "idle_cash_m": float(r.idle_cash_m or 0.0),
+                "avg_daily_withdrawal_m": avg_wd,
+                "avg_daily_deposit_m": avg_dep,
+                "crr_held_m": float(r.crr_held_m or 0.0),
+                "crr_required_m": float(r.crr_required_m or 0.0),
+                "total_deposits_m": float(r.total_deposits_m or 0.0),
+                "casa_deposits_m": float(r.casa_deposits_m or 0.0),
+                "term_deposits_m": float(r.term_deposits_m or 0.0),
+                "cost_personnel_m": float(r.personnel_cost_m or 0.0),
+                "cost_premises_m": float(r.premises_cost_m or 0.0),
+                "cost_cash_handling_m": float(r.cash_handling_cost_m or 0.0),
+                "cost_cit_m": float(r.cit_cost_m or 0.0),
+                "cost_insurance_m": float(r.insurance_cost_m or 0.0),
+                "cost_direct_m": float(r.direct_cost_m or 0.0),
+                "cost_other_m": float(r.other_cost_m or 0.0),
+                "interest_income_m": float(r.interest_income_m or 0.0),
+                "interest_expense_m": float(r.interest_expense_m or 0.0),
+                "fee_income_m": float(r.fee_income_m or 0.0),
+            }
+        self._NETWORK_CACHE_KEY = cache_key
+        self._NETWORK_CACHE_VAL = state
+        return state, as_of
+
+    def _branch_optimal(self, avg_wd_m: float, capacity_m: float) -> tuple[float, float, float]:
+        """Consistent (optimal, sbp_minimum, insurance_limit) in PKR M from reconciled demand.
+        Same formula as vault_recommendation so every UC agrees on surplus/deficit."""
+        insurance_limit = capacity_m * 0.85
+        sbp_minimum = max(avg_wd_m * 0.3, 2.0)
+        optimal = min(max(avg_wd_m * 1.65, sbp_minimum), insurance_limit)
+        return optimal, sbp_minimum, insurance_limit
+
+    def _branch_states(self, city: str = None):
+        """Unified per-branch state on the reconciled spine for the network-scanning UCs.
+
+        Joins static Branch metadata (capacity, geo, type, CES) with the latest reconciled
+        ledger row (balance, idle, flows, deposits, cost pools). `current`/`idle`/`avg_wd`/
+        `avg_dep` and `optimal` come from fact_gl_daily when the branch is reconciled; falls
+        back to the legacy ORM snapshot otherwise. Returns (states, as_of, data_source)."""
+        q = self.db.query(Branch)
+        if city:
+            q = q.filter(Branch.city == city)
+        branches = q.all()
+        recon, as_of = self._reconciled_network_state()
+        reconciled_hits = 0
+        states = []
+        for b in branches:
+            r = recon.get(b.branch_id)
+            capacity = M(b.vault_capacity)
+            if r:
+                reconciled_hits += 1
+                current, idle = r["closing_balance_m"], r["idle_cash_m"]
+                avg_wd, avg_dep = r["avg_daily_withdrawal_m"], r["avg_daily_deposit_m"]
+                optimal, sbp_min, ins_limit = self._branch_optimal(avg_wd, capacity)
+            else:
+                current, idle = M(b.current_vault_balance), M(b.idle_cash)
+                avg_wd, avg_dep = M(b.avg_daily_withdrawals), M(b.avg_daily_deposits)
+                optimal = M(b.optimal_vault_balance)
+                ins_limit = capacity * 0.85
+                sbp_min = max(avg_wd * 0.3, 2.0)
+                if optimal <= 0:
+                    optimal = min(max(avg_wd * 1.65, sbp_min), ins_limit)
+            states.append({
+                "branch": b, "recon": r,
+                "current": current, "idle": idle,
+                "avg_wd": avg_wd, "avg_dep": avg_dep,
+                "capacity": capacity, "optimal": optimal,
+                "sbp_min": sbp_min, "insurance_limit": ins_limit,
+            })
+        data_source = "reconciled" if reconciled_hits else "snapshot"
+        if reconciled_hits and reconciled_hits < len(states):
+            data_source = "mixed"
+        return states, as_of, data_source
+
+    # ══════════════════════════════════════════════════════════
     # UC-01: VAULT RECOMMENDATION
     # ══════════════════════════════════════════════════════════
 
@@ -343,56 +466,57 @@ class CashOptimizationEngine:
     # ══════════════════════════════════════════════════════════
 
     def netting_opportunities(self, city: str = None) -> dict:
-        query = self.db.query(Branch)
-        if city:
-            query = query.filter(Branch.city == city)
-        branches = query.all()
+        # Reconciled spine: surplus/deficit computed from ledger balances vs the same
+        # optimal formula UC-01 uses, so netting agrees with the vault recommendations.
+        states, as_of, data_source = self._branch_states(city)
+        surplus = [st for st in states if st["optimal"] > 0 and st["current"] > st["optimal"] * 1.3]
+        deficit = [st for st in states if st["optimal"] > 0 and st["current"] < st["optimal"] * 0.8]
 
-        surplus = [b for b in branches if b.current_vault_balance > b.optimal_vault_balance * 1.3 and b.optimal_vault_balance > 0]
-        deficit = [b for b in branches if b.current_vault_balance < b.optimal_vault_balance * 0.8 and b.optimal_vault_balance > 0]
-
-        # Build all candidate pairs with distances
+        # Build all candidate pairs with distances (from branch metadata geo)
         candidates = []
         for s in surplus:
+            sb = s["branch"]
             for d in deficit:
-                if s.latitude and d.latitude and s.longitude and d.longitude:
-                    dlat = abs(s.latitude - d.latitude)
-                    dlng = abs(s.longitude - d.longitude)
+                db_ = d["branch"]
+                if sb.latitude and db_.latitude and sb.longitude and db_.longitude:
+                    dlat = abs(sb.latitude - db_.latitude)
+                    dlng = abs(sb.longitude - db_.longitude)
                     dist_km = math.sqrt(dlat ** 2 + dlng ** 2) * 111
                 else:
-                    dist_km = 10.0 if s.city == d.city else 50.0
+                    dist_km = 10.0 if sb.city == db_.city else 50.0
 
                 if dist_km <= 15:
                     candidates.append((s, d, dist_km))
 
-        # Greedy 1-to-1 matching: each branch's capacity used once
-        # Sort by transfer size descending for best matches first
-        remaining_excess = {b.branch_id: M(b.current_vault_balance - b.optimal_vault_balance) for b in surplus}
-        remaining_shortfall = {b.branch_id: M(b.optimal_vault_balance - b.current_vault_balance) for b in deficit}
+        # Greedy 1-to-1 matching: each branch's capacity used once.
+        # Balances/optimal are already in PKR M (reconciled spine).
+        remaining_excess = {s["branch"].branch_id: s["current"] - s["optimal"] for s in surplus}
+        remaining_shortfall = {d["branch"].branch_id: d["optimal"] - d["current"] for d in deficit}
 
-        candidates.sort(key=lambda x: min(remaining_excess.get(x[0].branch_id, 0), remaining_shortfall.get(x[1].branch_id, 0)), reverse=True)
+        candidates.sort(key=lambda x: min(remaining_excess.get(x[0]["branch"].branch_id, 0), remaining_shortfall.get(x[1]["branch"].branch_id, 0)), reverse=True)
 
         matches = []
         for s, d, dist_km in candidates:
-            avail_excess = remaining_excess.get(s.branch_id, 0)
-            avail_shortfall = remaining_shortfall.get(d.branch_id, 0)
+            sb, db_ = s["branch"], d["branch"]
+            avail_excess = remaining_excess.get(sb.branch_id, 0)
+            avail_shortfall = remaining_shortfall.get(db_.branch_id, 0)
             transfer = min(avail_excess, avail_shortfall)
 
             if transfer < 3.0:
                 continue
 
-            remaining_excess[s.branch_id] -= transfer
-            remaining_shortfall[d.branch_id] -= transfer
+            remaining_excess[sb.branch_id] -= transfer
+            remaining_shortfall[db_.branch_id] -= transfer
 
             bsc_avoided = transfer * self.bsc_service_charge
             net_saving = bsc_avoided + self.normal_cit
 
             matches.append({
-                "from_branch": s.branch_id,
-                "from_name": s.name,
-                "to_branch": d.branch_id,
-                "to_name": d.name,
-                "city": s.city,
+                "from_branch": sb.branch_id,
+                "from_name": sb.name,
+                "to_branch": db_.branch_id,
+                "to_name": db_.name,
+                "city": sb.city,
                 "transfer_amount": round(transfer, 1),
                 "distance_km": round(dist_km, 1),
                 "bsc_charge_avoided": round(bsc_avoided, 4),
@@ -405,6 +529,8 @@ class CashOptimizationEngine:
         total_saving = sum(m["net_saving"] for m in matches)
 
         return {
+            "date": as_of,
+            "data_source": data_source,
             "surplus_branches": len(surplus),
             "deficit_branches": len(deficit),
             "matches_found": len(matches),
@@ -657,7 +783,10 @@ class CashOptimizationEngine:
             plan["rs5000"] = max(0, plan.get("rs5000", 35) - 10)
             plan["rs1000"] = max(0, plan.get("rs1000", 35) - 5)
 
-        total_vault = M(branch.current_vault_balance)
+        # Reconciled closing balance (system of record), fallback to ORM snapshot.
+        recon = self._reconciled_branch_state(branch_id)
+        total_vault = recon["closing_balance_m"] if recon else M(branch.current_vault_balance)
+        data_source = "reconciled" if recon else "snapshot"
         amounts = {k: round(total_vault * v / 100, 1) for k, v in plan.items()}
 
         # Current inventory if available
@@ -691,6 +820,7 @@ class CashOptimizationEngine:
             "branch_id": branch_id,
             "branch_name": branch.name,
             "branch_type": btype,
+            "data_source": data_source,
             "denomination_plan_pct": plan,
             "denomination_amounts": amounts,
             "current_inventory": current_inv,
@@ -706,15 +836,15 @@ class CashOptimizationEngine:
     # ══════════════════════════════════════════════════════════
 
     def cit_route_sheet(self, city: str) -> dict:
-        branches = self.db.query(Branch).filter(Branch.city == city).all()
-
+        # Reconciled spine: pickup/delivery need computed from ledger balances vs optimal.
+        states, as_of, data_source = self._branch_states(city)
         needs_pickup = [
-            b for b in branches
-            if b.optimal_vault_balance > 0 and b.current_vault_balance > b.optimal_vault_balance * 1.3
+            st for st in states
+            if st["optimal"] > 0 and st["current"] > st["optimal"] * 1.3
         ]
         needs_delivery = [
-            b for b in branches
-            if b.optimal_vault_balance > 0 and b.current_vault_balance < b.optimal_vault_balance * 0.8
+            st for st in states
+            if st["optimal"] > 0 and st["current"] < st["optimal"] * 0.8
         ]
 
         routes = []
@@ -728,8 +858,9 @@ class CashOptimizationEngine:
             stops = []
             added_any = False
 
-            for b in list(remaining):
-                pickup = M(b.current_vault_balance - b.optimal_vault_balance)
+            for st in list(remaining):
+                b = st["branch"]
+                pickup = st["current"] - st["optimal"]   # already PKR M
                 # Cap oversized pickups at vehicle limit (split across multiple trips)
                 pickup = min(pickup, self.max_vehicle_value * 0.95)
                 if route_value + pickup > self.max_vehicle_value:
@@ -742,7 +873,7 @@ class CashOptimizationEngine:
                     "time_window": f"{8 + len(stops)}:{'30' if len(stops) % 2 == 0 else '00'}",
                 })
                 route_value += pickup
-                remaining.remove(b)
+                remaining.remove(st)
                 added_any = True
 
             if not added_any:
@@ -765,7 +896,8 @@ class CashOptimizationEngine:
 
         return {
             "city": city,
-            "date": str(date.today()),
+            "date": as_of or str(date.today()),
+            "data_source": data_source,
             "operating_window": "08:00 - 16:00",
             "routes": routes,
             "summary": {
