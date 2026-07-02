@@ -57,7 +57,7 @@ async def dashboard_summary(db: Session = Depends(get_db)):
 @router.get("/dashboard/executive-summary")
 async def executive_summary(db: Session = Depends(get_db)):
     """Aggregate savings and strategy across all 10 UCs.
-    All monetary values returned in PKR Millions for frontend formatPKR()."""
+    All `savings` values returned in RAW PKR for the frontend's raw-PKR formatPKR()."""
     from app.models.branch import Branch
     from app.models.atm import ATM
 
@@ -228,7 +228,9 @@ async def executive_summary(db: Session = Depends(get_db)):
         # UC-10 is a cost-attribution lens; its genuine value lever is the idle-cash
         # deployment opportunity (freed idle × KIBOR), not fabricated "benefits" (=0).
         # net_cash_cost is already in PKR M — no /1e6.
-        deployment_opp = pnl.get("deployment_opportunity_m", 0)
+        # deployment_opportunity_m / net_cash_cost are PKR Millions; every other UC
+        # row in this endpoint reports RAW PKR, so scale to raw for a consistent unit.
+        deployment_opp = pnl.get("deployment_opportunity_m", 0) * 1e6
         net_cost = pnl.get("net_cash_cost", 0)
         uc_results.append({
             "uc": "UC-10", "title": "Cash P&L Attribution",
