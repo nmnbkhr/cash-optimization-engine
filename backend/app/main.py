@@ -21,6 +21,7 @@ app.add_middleware(
 # Include routers
 from app.api.branches import router as branches_router
 from app.api.forecasts import router as forecasts_router
+from app.api.forecast_lab import router as forecast_lab_router
 from app.api.optimization import router as optimization_router
 from app.api.ai_summary import router as ai_router
 from app.api.dashboard import router as dashboard_router
@@ -39,6 +40,7 @@ from app.api.data_health import router as data_health_router
 
 app.include_router(branches_router)
 app.include_router(forecasts_router)
+app.include_router(forecast_lab_router)
 app.include_router(optimization_router)
 app.include_router(ai_router)
 app.include_router(dashboard_router)
