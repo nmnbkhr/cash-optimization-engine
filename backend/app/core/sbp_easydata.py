@@ -32,7 +32,7 @@ from typing import Optional
 
 API_BASE = "https://easydata.sbp.org.pk/api/v1"
 
-API_KEY = os.getenv("SBP_EASYDATA_API_KEY", "BC24A1EF473A212EE9DDA932D65D1F648627EC60")
+API_KEY = os.getenv("SBP_EASYDATA_API_KEY", "")  # set via .env; never hardcode secrets
 OUTPUT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "sbp_cache"
 RAW_DIR = OUTPUT_DIR / "raw"          # Raw JSON responses
 DATASETS_DIR = OUTPUT_DIR / "datasets"  # Dataset metadata
