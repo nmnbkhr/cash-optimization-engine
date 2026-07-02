@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
+import DataSourceBadge from '../common/DataSourceBadge'
 
 const theme = {
   bg: '#0a0e17',
@@ -271,22 +272,25 @@ export default function ConsolidatedDashboard() {
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1280, margin: '0 auto' }}>
       {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{
-          fontSize: 22,
-          fontWeight: 700,
-          color: theme.text,
-          margin: 0,
-        }}>
-          Cash Optimization Engine
-        </h1>
-        <p style={{
-          fontSize: 12,
-          color: theme.textSecondary,
-          margin: '4px 0 0',
-        }}>
-          Treasury Operations Consolidated View
-        </p>
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <h1 style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: theme.text,
+            margin: 0,
+          }}>
+            Cash Optimization Engine
+          </h1>
+          <p style={{
+            fontSize: 12,
+            color: theme.textSecondary,
+            margin: '4px 0 0',
+          }}>
+            Treasury Operations Consolidated View
+          </p>
+        </div>
+        <DataSourceBadge lineage={{ data_source: snap?.data_source, as_of: snap?.as_of }} />
       </div>
 
       {/* Row 1: Hero KPIs */}

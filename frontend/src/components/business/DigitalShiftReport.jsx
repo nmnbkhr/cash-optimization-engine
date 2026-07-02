@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
+import DataSourceBadge from '../common/DataSourceBadge'
 
 const theme = {
   bg: '#0a0e17',
@@ -409,7 +410,10 @@ export default function DigitalShiftReport() {
         }}>
           DIGITAL CHANNEL SHIFT REPORT
         </h1>
-        <Badge text="SBP CDM Mandate: 25% by 2028" color={theme.gold} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <DataSourceBadge lineage={{ data_source: data.data_source, as_of: data.as_of }} />
+          <Badge text="SBP CDM Mandate: 25% by 2028" color={theme.gold} />
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
+import DataSourceBadge from '../common/DataSourceBadge'
 
 const theme = {
   bg: '#0a0e17',
@@ -260,15 +261,17 @@ export default function PnLWaterfall() {
       padding: '24px 28px',
     }}>
       {/* Title */}
-      <div style={{
-        fontSize: 14,
-        fontWeight: 700,
-        fontFamily: theme.mono,
-        color: theme.text,
-        marginBottom: 6,
-        letterSpacing: '0.04em',
-      }}>
-        P&L WATERFALL &mdash; Monthly Value Creation
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 12 }}>
+        <div style={{
+          fontSize: 14,
+          fontWeight: 700,
+          fontFamily: theme.mono,
+          color: theme.text,
+          letterSpacing: '0.04em',
+        }}>
+          P&L WATERFALL &mdash; Monthly Value Creation
+        </div>
+        <DataSourceBadge lineage={{ data_source: data.data_source, as_of: data.date }} />
       </div>
       <div style={{
         fontSize: 11,

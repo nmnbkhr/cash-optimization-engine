@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
+import DataSourceBadge from '../common/DataSourceBadge'
 
 const theme = {
   bg: '#0a0e17',
@@ -349,13 +350,18 @@ export default function RegionalView() {
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1340, margin: '0 auto' }}>
       {/* Page header */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: theme.text, margin: 0 }}>
-          Regional Head View
-        </h1>
-        <p style={{ fontSize: 12, color: theme.textSecondary, margin: '4px 0 0' }}>
-          City-level analysis &mdash; netting opportunities &amp; ATM fleet status
-        </p>
+      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: theme.text, margin: 0 }}>
+            Regional Head View
+          </h1>
+          <p style={{ fontSize: 12, color: theme.textSecondary, margin: '4px 0 0' }}>
+            City-level analysis &mdash; netting opportunities &amp; ATM fleet status
+          </p>
+        </div>
+        {net?.data_source && (
+          <DataSourceBadge lineage={{ data_source: net.data_source, as_of: net.date }} />
+        )}
       </div>
 
       {/* City selector */}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
+import DataSourceBadge from '../common/DataSourceBadge'
 
 const theme = {
   bg: '#0a0e17',
@@ -492,14 +493,8 @@ export default function CITRouteSheet() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {data?.date && (
-            <span style={{
-              fontFamily: theme.mono,
-              fontSize: 12,
-              color: theme.textSecondary,
-            }}>
-              {data.date}
-            </span>
+          {data?.data_source && (
+            <DataSourceBadge lineage={{ data_source: data.data_source, as_of: data.date }} />
           )}
           {data?.operating_window && (
             <Badge text={data.operating_window} color={theme.cyan} />
