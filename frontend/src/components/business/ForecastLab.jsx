@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
+import useAppStore from '../../stores/appStore'
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, BarChart, Bar, Cell,
@@ -148,12 +149,20 @@ export default function ForecastLab() {
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1320, margin: '0 auto' }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: theme.text, margin: 0 }}>Forecast Lab</h1>
-        <p style={{ fontSize: 12, color: theme.textSecondary, margin: '4px 0 0' }}>
-          Train &amp; compare XGBoost · SARIMA · Prophet — per-horizon accuracy, interval coverage, feature importances
-          {result && <> · <span style={{ fontFamily: theme.mono }}>as-of {result.meta.as_of}</span></>}
-        </p>
+      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: theme.text, margin: 0 }}>Forecast Lab</h1>
+          <p style={{ fontSize: 12, color: theme.textSecondary, margin: '4px 0 0' }}>
+            Train &amp; compare XGBoost · SARIMA · Prophet — per-horizon accuracy, interval coverage, feature importances
+            {result && <> · <span style={{ fontFamily: theme.mono }}>as-of {result.meta.as_of}</span></>}
+          </p>
+        </div>
+        <button
+          onClick={() => useAppStore.getState().setCurrentUC('biz-forecast')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 11, fontWeight: 700, fontFamily: theme.mono, color: theme.textSecondary, backgroundColor: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          ← Back to Forecast
+        </button>
       </div>
 
       {/* ── Controls ── */}

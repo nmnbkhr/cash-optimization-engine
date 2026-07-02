@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useForecastStore } from '../../stores/forecastStore'
+import useAppStore from '../../stores/appStore'
 import axios from 'axios'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Line,
 } from 'recharts'
 import {
-  TrendingUp, RefreshCw, Activity, Zap, AlertTriangle, CheckCircle2,
+  TrendingUp, RefreshCw, Activity, Zap, AlertTriangle, CheckCircle2, FlaskConical,
 } from 'lucide-react'
 
 /* ------------------------------------------------------------------ */
@@ -613,6 +614,18 @@ export default function ForecastDashboard() {
             XGBoost + Conformal Prediction &mdash; 7-day branch cash forecasts
           </p>
         </div>
+        <button
+          onClick={() => useAppStore.getState().setCurrentUC('biz-forecast-lab')}
+          title="Compare XGBoost vs ARIMA vs Prophet, tune parameters, view per-horizon accuracy, and promote a model to production"
+          style={{
+            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', fontSize: 11, fontWeight: 700, fontFamily: theme.mono,
+            color: theme.gold, backgroundColor: 'transparent', border: `1px solid ${theme.gold}77`,
+            borderRadius: 6, cursor: 'pointer',
+          }}
+        >
+          <FlaskConical size={14} /> Advanced: Forecast Lab →
+        </button>
       </div>
 
       {/* Model Status Bar */}
